@@ -1,4 +1,4 @@
-import { mkdir, readFile, appendFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, appendFile, writeFile, rm } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
 import type { ExtractionOperation, ExtractionResult } from '../domain/extraction/types.js';
@@ -39,6 +39,12 @@ const emptyStats = (): CallLogStats => ({
 
 export class FileCallLogStore {
   constructor(private readonly logFilePath: string) {}
+
+  private async writeEntries(entries: CallLogEntry[]): Promise<void> {
+    await mkdir(dirname(this.logFilePath), { recursive: true });
+    const content = entries.map((entry) => JSON.stringify(entry)).join('\n');
+    await writeFile(this.logFilePath, content.length > 0 ? `${content}\n` : '', 'utf8');
+  }
 
   async append(entry: CallLogEntry): Promise<void> {
     await mkdir(dirname(this.logFilePath), { recursive: true });
@@ -85,6 +91,25 @@ export class FileCallLogStore {
 
     stats.totalRevenue = formatPrice(totalRevenue);
     return stats;
+  }
+
+  async attachReceiptTxHash(requestId: string, receiptTxHash: `0x${string}`): Promise<void> {
+    const entries = await this.list();
+    const entryIndex = entries.findIndex((entry) => entry.requestId === requestId);
+
+    if (entryIndex === -1) {
+      throw new Error(`Call log entry not found for requestId=${requestId}.`);
+    }
+
+    entries[entryIndex] = {
+      ...entries[entryIndex],
+      receiptTxHash
+    };
+    await this.writeEntries(entries);
+  }
+
+  async reset(): Promise<void> {
+    await rm(this.logFilePath, { force: true });
   }
 
   async writeSummary(summaryPath: string, payload: unknown): Promise<void> {

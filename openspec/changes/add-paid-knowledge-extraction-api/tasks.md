@@ -8,9 +8,10 @@
   Executor: Inner Codex
   目标：定义请求/响应 schema，支持 `mock` 与 `real llm` 两种模式，保证无外部密钥时也可运行。
 
-- [x] 1.3 建立支付适配层与三类付费 endpoint
+- [ ] 1.3 建立支付适配层与三类付费 endpoint
   Executor: Inner Codex
   目标：实现 `summary`、`entities`、`relations` 三个 endpoint，并支持 `mock payment` 与 `circle gateway` 两种支付模式。
+  当前状态：`mock payment` 与 `gateway challenge shell` 已完成；真实 Circle Gateway 验签/清算待下一轮补齐。
 
 - [x] 1.4 建立演示数据、批量 buyer 与证据导出
   Executor: Inner Codex
@@ -27,3 +28,4 @@
 - [x] 1.7 完成验证并回填交付证据
   Executor: Inner Codex
   目标：运行测试、构建、批量演示脚本，将结果整理到交付文档中，并输出 `50 次成功调用 + 50 笔 receipt tx` 的证据。
+  当前证据：`artifacts/demo-run/summary.json`、`artifacts/receipt-demo/summary.json`；其中 mock receipt demo 产出 `54` 次成功调用与 `54` 笔 receipt hash。

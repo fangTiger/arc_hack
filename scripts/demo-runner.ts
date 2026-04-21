@@ -1,27 +1,23 @@
-import { mkdir } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
+import { mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { MockKnowledgeExtractionProvider } from '../src/domain/extraction/mock-provider.js';
-import type { ExtractionOperation, ExtractionRequest } from '../src/domain/extraction/types.js';
-import { MockPaymentAdapter } from '../src/domain/payment/mock-payment.js';
-import { createReceiptWriter, type ReceiptWriter } from '../src/domain/receipt/writer.js';
-import { createExtractRouter } from '../src/routes/extract.js';
-import { FileCallLogStore, type CallLogStats } from '../src/store/call-log-store.js';
+import { createApp } from '../src/app.js';
+import { loadRuntimeEnv, type PaymentMode } from '../src/config/env.js';
 import { demoCorpus } from '../src/demo/corpus.js';
-
-type MockResponse = {
-  statusCode: number;
-  body: unknown;
-  status: (code: number) => MockResponse;
-  json: (payload: unknown) => MockResponse;
-};
+import type { ExtractionOperation, ExtractionRequest, ExtractionResult } from '../src/domain/extraction/types.js';
+import { createReceiptWriter, type ReceiptWriter } from '../src/domain/receipt/writer.js';
+import { FileCallLogStore, type CallLogStats } from '../src/store/call-log-store.js';
+import { invokeApp } from '../src/support/invoke-app.js';
 
 export type DemoRunOptions = {
   artifactDirectory: string;
   corpus?: ExtractionRequest[];
   operations?: ExtractionOperation[];
+  repeatCount?: number;
+  paymentMode?: PaymentMode;
   receiptWriter?: ReceiptWriter;
+  resetArtifacts?: boolean;
 };
 
 export type DemoRunSummary = {
@@ -34,112 +30,123 @@ export type DemoRunSummary = {
 
 type ReceiptMode = 'off' | 'mock' | 'arc';
 
-const createMockResponse = (): MockResponse => ({
-  statusCode: 200,
-  body: undefined,
-  status(code: number) {
-    this.statusCode = code;
-    return this;
-  },
-  json(payload: unknown) {
-    this.body = payload;
-    return this;
-  }
-});
-
-const getRouteHandler = (path: string, requestIdFactory: () => string) => {
-  const router = createExtractRouter({
-    extractionProvider: new MockKnowledgeExtractionProvider(),
-    paymentAdapter: new MockPaymentAdapter(),
-    requestIdFactory
-  });
-  const stack = Reflect.get(router, 'stack') as Array<{
-    route?: { path?: string; stack?: Array<{ handle?: (...args: any[]) => unknown }> };
-  }>;
-  const layer = stack.find((entry) => entry.route?.path === path);
-
-  return layer?.route?.stack?.[0]?.handle;
+type PaidExtractionPayload = {
+  requestId: string;
+  pricedOperation: { operation: ExtractionOperation; price: `$${number}` };
+  result: ExtractionResult;
+  payment: { mode: 'mock' | 'gateway'; status: 'paid' };
 };
 
-const operationPath: Record<ExtractionOperation, `/${ExtractionOperation}`> = {
-  summary: '/summary',
-  entities: '/entities',
-  relations: '/relations'
+type PaymentRequiredPayload = {
+  payment: {
+    mode: 'mock' | 'gateway';
+    status: 'payment_required';
+  };
+};
+
+const operationPath: Record<ExtractionOperation, `/api/extract/${ExtractionOperation}`> = {
+  summary: '/api/extract/summary',
+  entities: '/api/extract/entities',
+  relations: '/api/extract/relations'
+};
+
+const buildPaidHeaders = (paymentMode: 'mock' | 'gateway'): Record<string, string> => {
+  if (paymentMode === 'gateway') {
+    return {
+      'payment-signature': 'demo-gateway-proof'
+    };
+  }
+
+  return {
+    'x-payment-token': 'mock-paid'
+  };
 };
 
 export const runDemo = async (options: DemoRunOptions): Promise<DemoRunSummary> => {
   const corpus = options.corpus ?? demoCorpus;
   const operations = options.operations ?? ['summary', 'entities', 'relations'];
+  const repeatCount = options.repeatCount ?? 1;
   const callLogPath = join(options.artifactDirectory, 'call-log.jsonl');
   const summaryPath = join(options.artifactDirectory, 'summary.json');
   const store = new FileCallLogStore(callLogPath);
+
+  if (options.resetArtifacts ?? true) {
+    await rm(options.artifactDirectory, { recursive: true, force: true });
+  }
+
+  await mkdir(options.artifactDirectory, { recursive: true });
+
   let requestCounter = 0;
-  const requestIdFactory = () => `demo-${String(++requestCounter).padStart(3, '0')}`;
+  const app = createApp({
+    runtimeEnv: loadRuntimeEnv({
+      ...process.env,
+      NODE_ENV: 'test',
+      PORT: '3000',
+      PAYMENT_MODE: options.paymentMode ?? process.env.PAYMENT_MODE ?? 'mock',
+      AI_MODE: process.env.AI_MODE ?? 'mock',
+      CALL_LOG_PATH: callLogPath
+    }),
+    requestIdFactory: () => `demo-${String(++requestCounter).padStart(3, '0')}`
+  });
+  let requestSeedCounter = 0;
   const requestIds: string[] = [];
   const receiptTxHashes: `0x${string}`[] = [];
   let successCount = 0;
 
-  await mkdir(options.artifactDirectory, { recursive: true });
-
-  for (const item of corpus) {
-    for (const operation of operations) {
-      const handler = getRouteHandler(operationPath[operation], requestIdFactory);
-      const response = createMockResponse();
-
-      await handler?.(
-        {
-          body: item,
+  for (let round = 0; round < repeatCount; round += 1) {
+    for (const item of corpus) {
+      for (const operation of operations) {
+        const requestId = `demo-${String(++requestSeedCounter).padStart(3, '0')}`;
+        const requiredResponse = await invokeApp(app, {
+          method: 'POST',
+          path: operationPath[operation],
           headers: {
-            'x-payment-token': 'mock-paid'
-          }
-        } as any,
-        response as any,
-        () => undefined
-      );
+            'x-request-id': requestId
+          },
+          body: item
+        });
 
-      if (response.statusCode !== 200) {
-        continue;
-      }
+        if (requiredResponse.statusCode !== 402) {
+          continue;
+        }
 
-      const payload = response.body as {
-        requestId: string;
-        pricedOperation: { operation: ExtractionOperation; price: `$${number}` };
-        result: { kind: 'summary' | 'entities' | 'relations' };
-        payment: { mode: 'mock' | 'gateway'; status: 'paid' };
-      };
+        const requiredPayload = requiredResponse.json as PaymentRequiredPayload;
+        const paidResponse = await invokeApp(app, {
+          method: 'POST',
+          path: operationPath[operation],
+          headers: {
+            'x-request-id': requestId,
+            ...buildPaidHeaders(requiredPayload.payment.mode)
+          },
+          body: item
+        });
 
-      requestIds.push(payload.requestId);
-      successCount += 1;
+        if (paidResponse.statusCode !== 200) {
+          continue;
+        }
 
-      const payloadHash = `0x${createHash('sha256').update(JSON.stringify(payload.result)).digest('hex')}` as `0x${string}`;
-      const receiptResult = options.receiptWriter
-        ? await options.receiptWriter.write({
+        const payload = paidResponse.json as PaidExtractionPayload;
+        requestIds.push(payload.requestId);
+        successCount += 1;
+
+        if (options.receiptWriter) {
+          const payloadHash = `0x${createHash('sha256').update(JSON.stringify(payload.result)).digest('hex')}` as `0x${string}`;
+          const receiptResult = await options.receiptWriter.write({
             requestId: payload.requestId,
             operation: payload.pricedOperation.operation,
             payloadHash
-          })
-        : undefined;
+          });
 
-      if (receiptResult) {
-        receiptTxHashes.push(receiptResult.txHash);
+          receiptTxHashes.push(receiptResult.txHash);
+          await store.attachReceiptTxHash(payload.requestId, receiptResult.txHash);
+        }
       }
-
-      await store.append({
-        requestId: payload.requestId,
-        operation: payload.pricedOperation.operation,
-        price: payload.pricedOperation.price,
-        paymentMode: payload.payment.mode,
-        paymentStatus: payload.payment.status,
-        resultKind: payload.result.kind,
-        createdAt: new Date().toISOString(),
-        receiptTxHash: receiptResult?.txHash
-      });
     }
   }
 
   const stats = await store.getStats();
   const summary = {
-    totalRuns: corpus.length * operations.length,
+    totalRuns: corpus.length * operations.length * repeatCount,
     successCount,
     requestIds,
     stats,
@@ -159,6 +166,20 @@ const parseOperations = (value: string | undefined): ExtractionOperation[] | und
     .split(',')
     .map((operation) => operation.trim())
     .filter(Boolean) as ExtractionOperation[];
+};
+
+const parseRepeatCount = (value: string | undefined): number => {
+  if (!value) {
+    return 1;
+  }
+
+  const parsed = Number(value);
+
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`Invalid DEMO_REPEAT_COUNT value: ${value}`);
+  }
+
+  return parsed;
 };
 
 const parseReceiptWriterFromEnv = (): ReceiptWriter | undefined => {
@@ -193,11 +214,15 @@ const parseReceiptWriterFromEnv = (): ReceiptWriter | undefined => {
 };
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const artifactDirectory = process.env.DEMO_ARTIFACT_DIR ?? join(process.cwd(), 'artifacts', 'demo-run');
+  const receiptWriter = parseReceiptWriterFromEnv();
+  const artifactDirectory =
+    process.env.DEMO_ARTIFACT_DIR ??
+    join(process.cwd(), 'artifacts', receiptWriter ? 'receipt-demo' : 'demo-run');
   const summary = await runDemo({
     artifactDirectory,
     operations: parseOperations(process.env.DEMO_OPERATIONS),
-    receiptWriter: parseReceiptWriterFromEnv()
+    repeatCount: parseRepeatCount(process.env.DEMO_REPEAT_COUNT),
+    receiptWriter
   });
   console.log(JSON.stringify(summary, null, 2));
 }

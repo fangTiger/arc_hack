@@ -6,17 +6,21 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsx watch src/server.ts",
-    "demo:mock": "node --import tsx scripts/demo-runner.ts",
-    "demo:receipt:mock": "RECEIPT_MODE=mock node --import tsx scripts/demo-runner.ts",
+    "demo:mock": "DEMO_ARTIFACT_DIR=artifacts/demo-run node --import tsx scripts/demo-runner.ts",
+    "demo:receipt:mock": "RECEIPT_MODE=mock DEMO_ARTIFACT_DIR=artifacts/receipt-demo node --import tsx scripts/demo-runner.ts",
     "start": "node dist/server.js",
     "test": "vitest",
-    "test:contracts": "/Users/captain/.foundry/bin/forge test"
+    "test:contracts": "forge test"
   },
   "engines": {
     "node": ">=22"
   },
   "dependencies": {
-    "express": "^5.1.0"
+    "@circle-fin/x402-batching": "^2.1.0",
+    "@x402/core": "^2.10.0",
+    "@x402/evm": "^2.10.0",
+    "express": "^5.1.0",
+    "viem": "^2.48.2"
   },
   "devDependencies": {
     "@types/express": "^5.0.3",

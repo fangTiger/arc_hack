@@ -5,7 +5,7 @@ import { promisify } from 'node:util';
 import type { ExtractionOperation } from '../extraction/types.js';
 
 const execFileAsync = promisify(execFile);
-const castBinary = '/Users/captain/.foundry/bin/cast';
+const castBinary = process.env.CAST_BIN ?? 'cast';
 
 export type ReceiptWriteInput = {
   requestId: string;

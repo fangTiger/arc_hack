@@ -1,77 +1,68 @@
-import { describe, expect, it } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
-import { MockKnowledgeExtractionProvider } from '../src/domain/extraction/mock-provider.js';
-import { GatewayPaymentAdapter } from '../src/domain/payment/circle-gateway.js';
-import { MockPaymentAdapter } from '../src/domain/payment/mock-payment.js';
-import { createExtractRouter, PRICE_BY_OPERATION } from '../src/routes/extract.js';
+import { afterEach, describe, expect, it } from 'vitest';
 
-type MockRequest = {
-  body: Record<string, unknown>;
-  headers: Record<string, string | undefined>;
-};
-
-type MockResponse = {
-  statusCode: number;
-  body: unknown;
-  status: (code: number) => MockResponse;
-  json: (payload: unknown) => MockResponse;
-};
-
-const createMockResponse = (): MockResponse => ({
-  statusCode: 200,
-  body: undefined,
-  status(code: number) {
-    this.statusCode = code;
-    return this;
-  },
-  json(payload: unknown) {
-    this.body = payload;
-    return this;
-  }
-});
-
-const getRouteHandler = (path: string, paymentAdapter: MockPaymentAdapter | GatewayPaymentAdapter) => {
-  const router = createExtractRouter({
-    extractionProvider: new MockKnowledgeExtractionProvider(),
-    paymentAdapter,
-    requestIdFactory: () => `req-${path.replaceAll('/', '-')}`
-  });
-
-  const stack = Reflect.get(router, 'stack') as Array<{
-    route?: { path?: string; stack?: Array<{ handle?: (...args: any[]) => unknown }> };
-  }>;
-  const layer = stack.find((entry) => entry.route?.path === path);
-
-  return layer?.route?.stack?.[0]?.handle;
-};
-
-const invokeRoute = async (path: string, paymentAdapter: MockPaymentAdapter | GatewayPaymentAdapter, request: MockRequest) => {
-  const handler = getRouteHandler(path, paymentAdapter);
-  const response = createMockResponse();
-
-  expect(typeof handler).toBe('function');
-
-  await handler?.(request as any, response as any, () => undefined);
-
-  return response;
-};
+import { createApp } from '../src/app.js';
+import { loadRuntimeEnv } from '../src/config/env.js';
+import { PRICE_BY_OPERATION } from '../src/routes/extract.js';
+import { FileCallLogStore } from '../src/store/call-log-store.js';
+import { invokeApp } from '../src/support/invoke-app.js';
 
 const body = {
   sourceType: 'news',
   title: 'Arc partners with Circle',
   text: 'Arc introduced gasless nanopayments for AI agents. Circle provides the settlement layer.'
+} as const;
+
+const temporaryDirectories: string[] = [];
+
+afterEach(() => {
+  for (const directory of temporaryDirectories.splice(0)) {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+const createTestApp = (overrides?: Partial<Record<string, string>>) => {
+  const workingDirectory = mkdtempSync(join(tmpdir(), 'arc-hack-routes-'));
+  const callLogPath = join(workingDirectory, 'call-log.jsonl');
+  temporaryDirectories.push(workingDirectory);
+
+  const runtimeEnv = loadRuntimeEnv({
+    ...process.env,
+    NODE_ENV: 'test',
+    PORT: '3000',
+    PAYMENT_MODE: 'mock',
+    AI_MODE: 'mock',
+    CALL_LOG_PATH: callLogPath,
+    CIRCLE_SELLER_ADDRESS: '0xSELLER',
+    ...overrides
+  });
+
+  let requestCounter = 0;
+  return {
+    app: createApp({
+      runtimeEnv,
+      requestIdFactory: () => `req-${String(++requestCounter).padStart(3, '0')}`
+    }),
+    callLogStore: new FileCallLogStore(callLogPath)
+  };
 };
 
 describe('createExtractRouter', () => {
   it('should return 402 for unpaid mock payment requests', async () => {
-    const response = await invokeRoute('/summary', new MockPaymentAdapter(), {
-      body,
-      headers: {}
+    const { app } = createTestApp();
+
+    const response = await invokeApp(app, {
+      method: 'POST',
+      path: '/api/extract/summary',
+      body
     });
 
     expect(response.statusCode).toBe(402);
-    expect(response.body).toEqual({
-      requestId: 'req--summary',
+    expect(response.json).toEqual({
+      requestId: 'req-001',
       pricedOperation: {
         operation: 'summary',
         price: PRICE_BY_OPERATION.summary
@@ -84,17 +75,26 @@ describe('createExtractRouter', () => {
     });
   });
 
-  it('should return structured extraction results after mock payment succeeds', async () => {
-    const response = await invokeRoute('/entities', new MockPaymentAdapter(), {
-      body,
+  it('should return structured extraction results and persist a call log after payment succeeds', async () => {
+    const { app, callLogStore } = createTestApp();
+
+    const response = await invokeApp(app, {
+      method: 'POST',
+      path: '/api/extract/entities',
       headers: {
         'x-payment-token': 'mock-paid'
-      }
+      },
+      body
     });
+    const statsResponse = await invokeApp(app, {
+      method: 'GET',
+      path: '/ops/stats'
+    });
+    const entries = await callLogStore.list();
 
     expect(response.statusCode).toBe(200);
-    expect(response.body).toEqual({
-      requestId: 'req--entities',
+    expect(response.json).toEqual({
+      requestId: 'req-001',
       pricedOperation: {
         operation: 'entities',
         price: PRICE_BY_OPERATION.entities
@@ -112,17 +112,44 @@ describe('createExtractRouter', () => {
         proof: 'mock-paid'
       }
     });
+    expect(entries).toEqual([
+      {
+        requestId: 'req-001',
+        operation: 'entities',
+        price: PRICE_BY_OPERATION.entities,
+        paymentMode: 'mock',
+        paymentStatus: 'paid',
+        resultKind: 'entities',
+        createdAt: expect.any(String)
+      }
+    ]);
+    expect(statsResponse.statusCode).toBe(200);
+    expect(statsResponse.json).toEqual({
+      totalCalls: 1,
+      successfulCalls: 1,
+      totalRevenue: '$0.003',
+      byOperation: {
+        summary: 0,
+        entities: 1,
+        relations: 0
+      }
+    });
   });
 
   it('should expose gateway style payment requirements for unpaid requests', async () => {
-    const response = await invokeRoute('/relations', new GatewayPaymentAdapter({ sellerAddress: '0xSELLER' }), {
-      body,
-      headers: {}
+    const { app } = createTestApp({
+      PAYMENT_MODE: 'gateway'
+    });
+
+    const response = await invokeApp(app, {
+      method: 'POST',
+      path: '/api/extract/relations',
+      body
     });
 
     expect(response.statusCode).toBe(402);
-    expect(response.body).toEqual({
-      requestId: 'req--relations',
+    expect(response.json).toEqual({
+      requestId: 'req-001',
       pricedOperation: {
         operation: 'relations',
         price: PRICE_BY_OPERATION.relations

@@ -4,10 +4,12 @@ import { Router } from 'express';
 import type { KnowledgeExtractionProvider } from '../domain/extraction/provider.js';
 import type { ExtractionOperation, ExtractionRequest } from '../domain/extraction/types.js';
 import type { PaymentAdapter, Price, PricedOperation } from '../domain/payment/types.js';
+import type { FileCallLogStore } from '../store/call-log-store.js';
 
 type CreateExtractRouterOptions = {
   extractionProvider: KnowledgeExtractionProvider;
   paymentAdapter: PaymentAdapter;
+  callLogStore: FileCallLogStore;
   requestIdFactory?: () => string;
 };
 
@@ -51,7 +53,9 @@ export const createExtractRouter = (options: CreateExtractRouterOptions) => {
         return;
       }
 
-      const requestId = requestIdFactory();
+      const requestIdHeader = request.headers['x-request-id'];
+      const requestId =
+        typeof requestIdHeader === 'string' && requestIdHeader.trim().length > 0 ? requestIdHeader : requestIdFactory();
       const pricedOperation = buildPricedOperation(operation);
       const paymentResult = await options.paymentAdapter.authorize({
         headers: request.headers as Record<string, string | undefined>,
@@ -68,6 +72,16 @@ export const createExtractRouter = (options: CreateExtractRouterOptions) => {
       }
 
       const result = await options.extractionProvider.extract(operation, extractionRequest);
+
+      await options.callLogStore.append({
+        requestId,
+        operation,
+        price: pricedOperation.price,
+        paymentMode: paymentResult.payment.mode,
+        paymentStatus: paymentResult.payment.status,
+        resultKind: result.kind,
+        createdAt: new Date().toISOString()
+      });
 
       response.status(200).json({
         requestId,

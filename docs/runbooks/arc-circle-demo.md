@@ -19,6 +19,8 @@
 export ARC_RPC_URL=\"https://your-arc-rpc.example\"
 export ARC_PRIVATE_KEY=\"0xyourprivatekey\"
 export CIRCLE_SELLER_ADDRESS=\"0xYourSellerAddress\"
+export LLM_BASE_URL=\"https://llm.example.com/v1\"
+export LLM_MODEL=\"gpt-4.1-mini\"
 ```
 
 如果要在 app 中切到 gateway challenge 外壳：
@@ -30,14 +32,15 @@ export PAYMENT_MODE=gateway
 先确认 Foundry 可用：
 ```bash
 source /Users/captain/.zshenv
-/Users/captain/.foundry/bin/forge test
+forge test
 ```
 
 部署命令：
 ```bash
-/Users/captain/.foundry/bin/forge create contracts/src/UsageReceipt.sol:UsageReceipt \
+forge script contracts/script/DeployUsageReceipt.s.sol:DeployUsageReceiptScript \
   --rpc-url \"$ARC_RPC_URL\" \
-  --private-key \"$ARC_PRIVATE_KEY\"
+  --private-key \"$ARC_PRIVATE_KEY\" \
+  --broadcast
 ```
 
 记下输出里的合约地址，并设置：
@@ -50,6 +53,7 @@ export USAGE_RECEIPT_ADDRESS=\"0xYourDeployedReceiptAddress\"
 ```bash
 RECEIPT_MODE=arc \
 DEMO_OPERATIONS=summary \
+DEMO_ARTIFACT_DIR=artifacts/receipt-demo \
 node --import tsx scripts/demo-runner.ts
 ```
 
@@ -62,7 +66,7 @@ node --import tsx scripts/demo-runner.ts
 - `requestIds`
 - `receiptTxHashes`
 
-同时 `artifacts/demo-run/call-log.jsonl` 会记录每次调用对应的 `receiptTxHash`。
+同时 `artifacts/receipt-demo/call-log.jsonl` 会记录每次调用对应的 `receiptTxHash`。
 
 ## 4. 启动 gateway challenge 外壳
 ```bash
@@ -79,9 +83,9 @@ PAYMENT_MODE=gateway npm run dev
 
 ## 5. 推荐的黑客松演示顺序
 1. 先演示 `npm run demo:mock`，证明 API / 统计 / 批量调用可运行
-2. 再演示 `npm run demo:receipt:mock`，说明 receipt 层如何把调用映射到链上凭证
+2. 再演示 `DEMO_REPEAT_COUNT=6 npm run demo:receipt:mock`，产出 `54` 次成功调用和 `54` 笔 receipt hash，说明 receipt 层如何把调用映射到链上凭证
 3. 最后切到真实 Arc receipt：
-   `RECEIPT_MODE=arc DEMO_OPERATIONS=summary node --import tsx scripts/demo-runner.ts`
+   `RECEIPT_MODE=arc DEMO_OPERATIONS=summary DEMO_ARTIFACT_DIR=artifacts/receipt-demo node --import tsx scripts/demo-runner.ts`
 
 ## 6. 经济性说明建议
 答辩时建议明确区分三类证据：
