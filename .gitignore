@@ -4,6 +4,7 @@ coverage/
 .env
 .idea/
 .claude/
+artifacts/
 .graphifyignore
 .codex/*
 !.codex/config.toml

@@ -12,7 +12,7 @@
   Executor: Inner Codex
   目标：实现 `summary`、`entities`、`relations` 三个 endpoint，并支持 `mock payment` 与 `circle gateway` 两种支付模式。
 
-- [ ] 1.4 建立演示数据、批量 buyer 与证据导出
+- [x] 1.4 建立演示数据、批量 buyer 与证据导出
   Executor: Inner Codex
   目标：支持批量发起付费调用、输出调用统计、价格统计、支付结果与演示产物，并为后续 receipt 写链保留稳定 requestId。
 
