@@ -148,7 +148,7 @@ export const runDemo = async (options: DemoRunOptions): Promise<DemoRunSummary> 
   return summary;
 };
 
-const parseOperations = (value: string | undefined): ExtractionOperation[] | undefined => {
+export const parseOperations = (value: string | undefined): ExtractionOperation[] | undefined => {
   if (!value) {
     return undefined;
   }
@@ -159,7 +159,7 @@ const parseOperations = (value: string | undefined): ExtractionOperation[] | und
     .filter(Boolean) as ExtractionOperation[];
 };
 
-const parseRepeatCount = (value: string | undefined): number => {
+export const parseRepeatCount = (value: string | undefined): number => {
   if (!value) {
     return 1;
   }
@@ -173,7 +173,7 @@ const parseRepeatCount = (value: string | undefined): number => {
   return parsed;
 };
 
-const parseReceiptWriterFromEnv = (): ReceiptWriter | undefined => {
+export const parseReceiptWriterFromEnv = (): ReceiptWriter | undefined => {
   const receiptMode = (process.env.RECEIPT_MODE ?? 'off') as ReceiptMode;
 
   if (receiptMode === 'off') {

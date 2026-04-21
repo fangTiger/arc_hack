@@ -47,4 +47,27 @@ describe('loadRuntimeEnv', () => {
       circleGatewayFacilitatorUrl: 'https://gateway.example/facilitator'
     });
   });
+
+  it('should parse gateway buyer settings from environment variables', () => {
+    const runtimeEnv = loadRuntimeEnv({
+      NODE_ENV: 'test',
+      PORT: '4300',
+      PAYMENT_MODE: 'gateway',
+      AI_MODE: 'mock',
+      CALL_LOG_PATH: join('/tmp', 'arc-hack', 'call-log.jsonl'),
+      GATEWAY_BUYER_BASE_URL: 'http://127.0.0.1:3000',
+      GATEWAY_BUYER_PRIVATE_KEY: '0x1234',
+      GATEWAY_BUYER_CHAIN: 'arcTestnet',
+      GATEWAY_BUYER_RPC_URL: 'https://rpc.testnet.arc.network',
+      GATEWAY_BUYER_AUTO_DEPOSIT_AMOUNT: '1.5'
+    });
+
+    expect(runtimeEnv).toMatchObject({
+      gatewayBuyerBaseUrl: 'http://127.0.0.1:3000',
+      gatewayBuyerPrivateKey: '0x1234',
+      gatewayBuyerChain: 'arcTestnet',
+      gatewayBuyerRpcUrl: 'https://rpc.testnet.arc.network',
+      gatewayBuyerAutoDepositAmount: '1.5'
+    });
+  });
 });

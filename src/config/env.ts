@@ -1,8 +1,18 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { CHAIN_CONFIGS, type SupportedChainName } from '@circle-fin/x402-batching/client';
+
 export type PaymentMode = 'mock' | 'gateway';
 export type AiMode = 'mock' | 'real';
+
+export type GatewayBuyerEnv = {
+  baseUrl: string;
+  privateKey: string;
+  chain: SupportedChainName;
+  rpcUrl?: string;
+  autoDepositAmount?: string;
+};
 
 export type RuntimeEnv = {
   nodeEnv: string;
@@ -19,6 +29,11 @@ export type RuntimeEnv = {
   llmBaseUrl?: string;
   llmApiKey?: string;
   llmModel?: string;
+  gatewayBuyerBaseUrl?: string;
+  gatewayBuyerPrivateKey?: string;
+  gatewayBuyerChain?: SupportedChainName;
+  gatewayBuyerRpcUrl?: string;
+  gatewayBuyerAutoDepositAmount?: string;
 };
 
 type EnvSource = Record<string, string | undefined>;
@@ -72,6 +87,32 @@ const parseCommaSeparatedList = (value: string | undefined): string[] | undefine
     .filter(Boolean);
 
   return items.length > 0 ? items : undefined;
+};
+
+const parseGatewayBuyerChain = (value: string | undefined): SupportedChainName | undefined => {
+  if (!value) {
+    return undefined;
+  }
+
+  if (value in CHAIN_CONFIGS) {
+    return value as SupportedChainName;
+  }
+
+  throw new Error(`Invalid GATEWAY_BUYER_CHAIN value: ${value}`);
+};
+
+const parseOptionalPositiveDecimal = (name: string, value: string | undefined): string | undefined => {
+  if (!value) {
+    return undefined;
+  }
+
+  const parsed = Number(value);
+
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error(`Invalid ${name} value: ${value}`);
+  }
+
+  return value;
 };
 
 const parseEnvLine = (line: string): [string, string] | null => {
@@ -140,7 +181,40 @@ export const loadRuntimeEnv = (source: EnvSource = process.env): RuntimeEnv => {
     callLogPath: source.CALL_LOG_PATH ?? join(process.cwd(), 'artifacts', 'demo-run', 'call-log.jsonl'),
     llmBaseUrl: source.LLM_BASE_URL,
     llmApiKey: source.LLM_API_KEY,
-    llmModel: source.LLM_MODEL
+    llmModel: source.LLM_MODEL,
+    gatewayBuyerBaseUrl: source.GATEWAY_BUYER_BASE_URL,
+    gatewayBuyerPrivateKey: source.GATEWAY_BUYER_PRIVATE_KEY,
+    gatewayBuyerChain: parseGatewayBuyerChain(source.GATEWAY_BUYER_CHAIN),
+    gatewayBuyerRpcUrl: source.GATEWAY_BUYER_RPC_URL,
+    gatewayBuyerAutoDepositAmount: parseOptionalPositiveDecimal(
+      'GATEWAY_BUYER_AUTO_DEPOSIT_AMOUNT',
+      source.GATEWAY_BUYER_AUTO_DEPOSIT_AMOUNT
+    )
+  };
+};
+
+export const requireGatewayBuyerEnv = (
+  runtimeEnv: Pick<
+    RuntimeEnv,
+    | 'gatewayBuyerBaseUrl'
+    | 'gatewayBuyerPrivateKey'
+    | 'gatewayBuyerChain'
+    | 'gatewayBuyerRpcUrl'
+    | 'gatewayBuyerAutoDepositAmount'
+  >
+): GatewayBuyerEnv => {
+  if (!runtimeEnv.gatewayBuyerBaseUrl || !runtimeEnv.gatewayBuyerPrivateKey || !runtimeEnv.gatewayBuyerChain) {
+    throw new Error(
+      'GATEWAY_BUYER_BASE_URL, GATEWAY_BUYER_PRIVATE_KEY and GATEWAY_BUYER_CHAIN are required for the gateway buyer demo.'
+    );
+  }
+
+  return {
+    baseUrl: runtimeEnv.gatewayBuyerBaseUrl,
+    privateKey: runtimeEnv.gatewayBuyerPrivateKey,
+    chain: runtimeEnv.gatewayBuyerChain,
+    rpcUrl: runtimeEnv.gatewayBuyerRpcUrl,
+    autoDepositAmount: runtimeEnv.gatewayBuyerAutoDepositAmount
   };
 };
 

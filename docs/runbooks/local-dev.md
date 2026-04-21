@@ -48,6 +48,13 @@ npm run dev
 - 可选设置 `CIRCLE_GATEWAY_NETWORKS`
 - 可选设置 `CIRCLE_GATEWAY_FACILITATOR_URL`
 
+如果要跑真实 gateway buyer：
+- 设置 `GATEWAY_BUYER_BASE_URL`
+- 设置 `GATEWAY_BUYER_PRIVATE_KEY`
+- 设置 `GATEWAY_BUYER_CHAIN`
+- 可选设置 `GATEWAY_BUYER_RPC_URL`
+- 可选设置 `GATEWAY_BUYER_AUTO_DEPOSIT_AMOUNT`
+
 ## 5. 运行 mock demo
 ```bash
 npm run demo:mock
@@ -81,4 +88,35 @@ DEMO_OPERATIONS=summary,relations RECEIPT_MODE=mock npm run demo:mock
 生成 `54` 次成功调用和 `54` 笔 mock receipt：
 ```bash
 DEMO_REPEAT_COUNT=6 npm run demo:receipt:mock
+```
+
+## 8. 运行真实 gateway buyer demo
+先启动 seller：
+```bash
+PAYMENT_MODE=gateway npm run dev
+```
+
+再在另一个终端执行 buyer：
+```bash
+GATEWAY_BUYER_BASE_URL=http://127.0.0.1:3000 \
+GATEWAY_BUYER_PRIVATE_KEY=0xyourgatewaybuyerprivatekey \
+GATEWAY_BUYER_CHAIN=arcTestnet \
+DEMO_ARTIFACT_DIR=artifacts/gateway-run \
+node --import tsx scripts/gateway-buyer-runner.ts
+```
+
+说明：
+- buyer 会先对 `POST /api/extract/*` 做未支付探测，再用官方 `GatewayClient.pay()` 完成真实支付
+- buyer 产物固定落在独立目录，例如 `artifacts/gateway-run/call-log.jsonl` 与 `artifacts/gateway-run/summary.json`
+- 这不会污染 seller `/ops/stats` 默认读取的 `artifacts/demo-run/call-log.jsonl`
+- 如果报错提示 buyer Gateway 余额不足，可设置 `GATEWAY_BUYER_AUTO_DEPOSIT_AMOUNT=1.0` 让脚本先自动 `deposit()`
+
+如需同时补写 receipt：
+```bash
+PAYMENT_MODE=gateway \
+GATEWAY_BUYER_BASE_URL=http://127.0.0.1:3000 \
+GATEWAY_BUYER_PRIVATE_KEY=0xyourgatewaybuyerprivatekey \
+GATEWAY_BUYER_CHAIN=arcTestnet \
+RECEIPT_MODE=mock \
+npm run demo:gateway:buyer
 ```

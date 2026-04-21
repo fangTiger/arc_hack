@@ -47,6 +47,8 @@ export type GatewayPaymentAcceptedResult = {
   transaction: string;
 };
 
+export type GatewayAcceptedOption = Extract<PaymentRequiredResult, { mode: 'gateway' }>['accepts'][number];
+
 export type PaymentAcceptedResult =
   | MockPaymentAcceptedResult
   | GatewayPaymentAcceptedResult;
@@ -76,6 +78,13 @@ export type PaymentAuthorizationResult =
 export type PaymentAuthorizationInput = {
   headers: Record<string, string | undefined>;
   pricedOperation: PricedOperation;
+};
+
+export type GatewayPaidExtractionPayload<Result = unknown> = {
+  requestId: string;
+  pricedOperation: PricedOperation;
+  result: Result;
+  payment: GatewayPaymentAcceptedResult;
 };
 
 export interface PaymentAdapter {
