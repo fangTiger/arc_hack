@@ -1,0 +1,10 @@
+node_modules/
+dist/
+coverage/
+.env
+.idea/
+.claude/
+.graphifyignore
+.codex/*
+!.codex/config.toml
+!.codex/instructions.md

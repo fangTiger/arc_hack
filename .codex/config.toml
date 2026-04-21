@@ -1,0 +1,10 @@
+# 项目级 Codex 配置模板
+# 本文件是 `codex-codex-dev` 模式下发到目标项目的 `.codex/config.toml` 模板。
+# 仅保留项目级运行配置说明，不在此重复维护完整开发规范。
+# 推荐启动命令：
+#   /Users/captain/project/yonyou/ontologyDevOS/scripts/switch-plugin_codex.sh codex-codex-dev
+# 规范入口请优先阅读：
+#   1. .codex/instructions.md
+#   2. AGENTS.md
+#   3. 项目背景文档（如 CODE_WIKI.md / README.md）
+# 如涉及提案/规范变更，再检查 openspec/config.yaml、openspec/changes/ 与 openspec/specs/
