@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { MockKnowledgeExtractionProvider } from '../src/domain/extraction/mock-provider.js';
 import type { ExtractionOperation, ExtractionRequest } from '../src/domain/extraction/types.js';
 import { MockPaymentAdapter } from '../src/domain/payment/mock-payment.js';
-import type { ReceiptWriter } from '../src/domain/receipt/writer.js';
+import { createReceiptWriter, type ReceiptWriter } from '../src/domain/receipt/writer.js';
 import { createExtractRouter } from '../src/routes/extract.js';
 import { FileCallLogStore, type CallLogStats } from '../src/store/call-log-store.js';
 import { demoCorpus } from '../src/demo/corpus.js';
@@ -31,6 +31,8 @@ export type DemoRunSummary = {
   stats: CallLogStats;
   receiptTxHashes?: `0x${string}`[];
 };
+
+type ReceiptMode = 'off' | 'mock' | 'arc';
 
 const createMockResponse = (): MockResponse => ({
   statusCode: 200,
@@ -148,8 +150,54 @@ export const runDemo = async (options: DemoRunOptions): Promise<DemoRunSummary> 
   return summary;
 };
 
+const parseOperations = (value: string | undefined): ExtractionOperation[] | undefined => {
+  if (!value) {
+    return undefined;
+  }
+
+  return value
+    .split(',')
+    .map((operation) => operation.trim())
+    .filter(Boolean) as ExtractionOperation[];
+};
+
+const parseReceiptWriterFromEnv = (): ReceiptWriter | undefined => {
+  const receiptMode = (process.env.RECEIPT_MODE ?? 'off') as ReceiptMode;
+
+  if (receiptMode === 'off') {
+    return undefined;
+  }
+
+  if (receiptMode === 'mock') {
+    return createReceiptWriter({ mode: 'mock' });
+  }
+
+  if (receiptMode === 'arc') {
+    const rpcUrl = process.env.ARC_RPC_URL;
+    const contractAddress = process.env.USAGE_RECEIPT_ADDRESS;
+    const privateKey = process.env.ARC_PRIVATE_KEY;
+
+    if (!rpcUrl || !contractAddress || !privateKey) {
+      throw new Error('ARC_RPC_URL, USAGE_RECEIPT_ADDRESS and ARC_PRIVATE_KEY are required for RECEIPT_MODE=arc.');
+    }
+
+    return createReceiptWriter({
+      mode: 'arc',
+      rpcUrl,
+      contractAddress,
+      privateKey
+    });
+  }
+
+  throw new Error(`Unsupported RECEIPT_MODE: ${receiptMode}`);
+};
+
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const artifactDirectory = join(process.cwd(), 'artifacts', 'demo-run');
-  const summary = await runDemo({ artifactDirectory });
+  const artifactDirectory = process.env.DEMO_ARTIFACT_DIR ?? join(process.cwd(), 'artifacts', 'demo-run');
+  const summary = await runDemo({
+    artifactDirectory,
+    operations: parseOperations(process.env.DEMO_OPERATIONS),
+    receiptWriter: parseReceiptWriterFromEnv()
+  });
   console.log(JSON.stringify(summary, null, 2));
 }

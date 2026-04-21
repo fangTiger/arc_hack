@@ -6,8 +6,11 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsx watch src/server.ts",
+    "demo:mock": "node --import tsx scripts/demo-runner.ts",
+    "demo:receipt:mock": "RECEIPT_MODE=mock node --import tsx scripts/demo-runner.ts",
     "start": "node dist/server.js",
-    "test": "vitest"
+    "test": "vitest",
+    "test:contracts": "/Users/captain/.foundry/bin/forge test"
   },
   "engines": {
     "node": ">=22"
