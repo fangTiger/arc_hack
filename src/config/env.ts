@@ -10,6 +10,8 @@ export type RuntimeEnv = {
   paymentMode: PaymentMode;
   aiMode: AiMode;
   circleSellerAddress?: string;
+  circleGatewayNetworks?: string[];
+  circleGatewayFacilitatorUrl?: string;
   arcRpcUrl?: string;
   arcPrivateKey?: string;
   usageReceiptAddress?: string;
@@ -57,6 +59,19 @@ const parseAiMode = (value: string | undefined): AiMode => {
   }
 
   throw new Error(`Invalid AI_MODE value: ${value}`);
+};
+
+const parseCommaSeparatedList = (value: string | undefined): string[] | undefined => {
+  if (!value) {
+    return undefined;
+  }
+
+  const items = value
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+
+  return items.length > 0 ? items : undefined;
 };
 
 const parseEnvLine = (line: string): [string, string] | null => {
@@ -117,6 +132,8 @@ export const loadRuntimeEnv = (source: EnvSource = process.env): RuntimeEnv => {
     paymentMode: parsePaymentMode(source.PAYMENT_MODE),
     aiMode: parseAiMode(source.AI_MODE),
     circleSellerAddress: source.CIRCLE_SELLER_ADDRESS,
+    circleGatewayNetworks: parseCommaSeparatedList(source.CIRCLE_GATEWAY_NETWORKS),
+    circleGatewayFacilitatorUrl: source.CIRCLE_GATEWAY_FACILITATOR_URL,
     arcRpcUrl: source.ARC_RPC_URL,
     arcPrivateKey: source.ARC_PRIVATE_KEY,
     usageReceiptAddress: source.USAGE_RECEIPT_ADDRESS,

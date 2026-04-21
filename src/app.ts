@@ -4,7 +4,7 @@ import { env, type RuntimeEnv } from './config/env.js';
 import type { KnowledgeExtractionProvider } from './domain/extraction/provider.js';
 import { MockKnowledgeExtractionProvider } from './domain/extraction/mock-provider.js';
 import { RealKnowledgeExtractionProvider } from './domain/extraction/real-provider.js';
-import { GatewayPaymentAdapter } from './domain/payment/circle-gateway.js';
+import { createCircleGatewayMiddleware } from './domain/payment/circle-gateway.js';
 import { MockPaymentAdapter } from './domain/payment/mock-payment.js';
 import type { PaymentAdapter } from './domain/payment/types.js';
 import { createExtractRouter } from './routes/extract.js';
@@ -36,20 +36,25 @@ export const createExtractionProvider = (runtimeEnv: Pick<RuntimeEnv, 'aiMode' |
 };
 
 export const createPaymentAdapter = (runtimeEnv: Pick<RuntimeEnv, 'paymentMode' | 'circleSellerAddress'>): PaymentAdapter => {
-  if (runtimeEnv.paymentMode === 'gateway') {
-    return new GatewayPaymentAdapter({
-      sellerAddress: runtimeEnv.circleSellerAddress ?? '0xSELLER'
-    });
-  }
-
   return new MockPaymentAdapter();
 };
 
 export const createApp = (options: CreateAppOptions = {}) => {
   const runtimeEnv = options.runtimeEnv ?? env;
   const callLogStore = options.callLogStore ?? new FileCallLogStore(runtimeEnv.callLogPath);
-  const paymentAdapter = options.paymentAdapter ?? createPaymentAdapter(runtimeEnv);
   const extractionProvider = options.extractionProvider ?? createExtractionProvider(runtimeEnv);
+  const paymentAdapter =
+    runtimeEnv.paymentMode === 'mock' ? options.paymentAdapter ?? createPaymentAdapter(runtimeEnv) : undefined;
+  const gatewayMiddleware =
+    runtimeEnv.paymentMode === 'gateway'
+      ? createCircleGatewayMiddleware({
+          sellerAddress: runtimeEnv.circleSellerAddress ?? (() => {
+            throw new Error('PAYMENT_MODE=gateway requires CIRCLE_SELLER_ADDRESS.');
+          })(),
+          networks: runtimeEnv.circleGatewayNetworks,
+          facilitatorUrl: runtimeEnv.circleGatewayFacilitatorUrl
+        })
+      : undefined;
   const app = express();
 
   app.use(express.json());
@@ -58,6 +63,7 @@ export const createApp = (options: CreateAppOptions = {}) => {
     createExtractRouter({
       extractionProvider,
       paymentAdapter,
+      gatewayMiddleware,
       callLogStore,
       requestIdFactory: options.requestIdFactory
     })

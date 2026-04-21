@@ -51,6 +51,24 @@ describe('runDemo', () => {
     }
   });
 
+  it('should stay mock-only and reject gateway payment mode', async () => {
+    const workingDirectory = mkdtempSync(join(tmpdir(), 'arc-hack-demo-gateway-'));
+    const artifactDirectory = join(workingDirectory, 'artifacts');
+
+    try {
+      await expect(
+        runDemo({
+          artifactDirectory,
+          operations: ['summary'],
+          corpus: demoCorpus.slice(0, 1),
+          paymentMode: 'gateway'
+        })
+      ).rejects.toThrow('runDemo only supports mock payment mode');
+    } finally {
+      rmSync(workingDirectory, { recursive: true, force: true });
+    }
+  });
+
   it('should support repeated runs and attach receipt tx hashes to each successful call', async () => {
     const workingDirectory = mkdtempSync(join(tmpdir(), 'arc-hack-receipt-'));
     const artifactDirectory = join(workingDirectory, 'artifacts');

@@ -28,4 +28,23 @@ describe('loadRuntimeEnv', () => {
       llmApiKey: 'secret'
     });
   });
+
+  it('should parse gateway seller settings from environment variables', () => {
+    const runtimeEnv = loadRuntimeEnv({
+      NODE_ENV: 'test',
+      PORT: '4300',
+      PAYMENT_MODE: 'gateway',
+      AI_MODE: 'mock',
+      CALL_LOG_PATH: join('/tmp', 'arc-hack', 'call-log.jsonl'),
+      CIRCLE_SELLER_ADDRESS: '0xSeller',
+      CIRCLE_GATEWAY_NETWORKS: 'eip155:5042002,eip155:84532',
+      CIRCLE_GATEWAY_FACILITATOR_URL: 'https://gateway.example/facilitator'
+    });
+
+    expect(runtimeEnv).toMatchObject({
+      circleSellerAddress: '0xSeller',
+      circleGatewayNetworks: ['eip155:5042002', 'eip155:84532'],
+      circleGatewayFacilitatorUrl: 'https://gateway.example/facilitator'
+    });
+  });
 });

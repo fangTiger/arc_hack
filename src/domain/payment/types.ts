@@ -19,16 +19,48 @@ export type PaymentRequiredResult =
       x402Version: 2;
       accepts: Array<{
         scheme: 'exact';
-        network: 'eip155:5042002';
+        network: string;
         amount: string;
         payTo: string;
+        asset?: string;
+        maxTimeoutSeconds?: number;
+        extra?: {
+          name: 'GatewayWalletBatched';
+          version: '1';
+          verifyingContract?: string;
+        };
       }>;
     };
 
-export type PaymentAcceptedResult = {
-  mode: 'mock' | 'gateway';
+export type MockPaymentAcceptedResult = {
+  mode: 'mock';
   status: 'paid';
   proof: string;
+};
+
+export type GatewayPaymentAcceptedResult = {
+  mode: 'gateway';
+  status: 'paid';
+  payer: string;
+  amount: string;
+  network: string;
+  transaction: string;
+};
+
+export type PaymentAcceptedResult =
+  | MockPaymentAcceptedResult
+  | GatewayPaymentAcceptedResult;
+
+export type GatewayPaymentMetadata = {
+  verified: true;
+  payer: string;
+  amount: string;
+  network: string;
+  transaction: string;
+};
+
+export type GatewayPaymentRequest = {
+  payment?: GatewayPaymentMetadata;
 };
 
 export type PaymentAuthorizationResult =

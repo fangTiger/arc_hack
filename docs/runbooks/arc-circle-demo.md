@@ -7,12 +7,12 @@
 
 ## 0. 当前版本边界
 - API 本地可运行路径以 `mock payment` 为主
-- `gateway` 模式当前已能返回 x402 风格的 `402 Payment Required` 响应结构
+- `gateway` 模式已接入真实 Circle Gateway seller middleware，未付款请求会被官方 middleware 拦截并返回 `402`
 - 真实 Arc 写链已经可通过 `ReceiptWriter(mode=arc)` 完成
 
 也就是说：
 - “真实链上证据” 当前走 `UsageReceipt`
-- “真实 Circle Gateway 验签/清算闭环” 还处在接口外壳阶段，后续可继续补强
+- “真实 Circle Gateway seller 侧接入” 已完成；buyer 真实链上联调仍留在下一阶段
 
 ## 1. 准备环境变量
 ```bash
@@ -23,15 +23,19 @@ export LLM_BASE_URL=\"https://llm.example.com/v1\"
 export LLM_MODEL=\"gpt-4.1-mini\"
 ```
 
-如果要在 app 中切到 gateway challenge 外壳：
+如果要在 app 中切到真实 gateway seller 模式：
 ```bash
 export PAYMENT_MODE=gateway
+export CIRCLE_SELLER_ADDRESS=\"0xYourSellerAddress\"
+# 可选
+export CIRCLE_GATEWAY_NETWORKS=\"eip155:5042002,eip155:84532\"
+export CIRCLE_GATEWAY_FACILITATOR_URL=\"https://gateway.example/facilitator\"
 ```
 
 ## 2. 部署 UsageReceipt 合约
 先确认 Foundry 可用：
 ```bash
-source /Users/captain/.zshenv
+which forge
 forge test
 ```
 
@@ -68,18 +72,16 @@ node --import tsx scripts/demo-runner.ts
 
 同时 `artifacts/receipt-demo/call-log.jsonl` 会记录每次调用对应的 `receiptTxHash`。
 
-## 4. 启动 gateway challenge 外壳
+## 4. 启动 gateway seller 路径
 ```bash
 PAYMENT_MODE=gateway npm run dev
 ```
 
-此时调用 `POST /api/extract/*` 且不带支付头，会收到 `402` 响应，包含：
-- `x402Version`
-- `accepts`
-- `payTo`
-- 微支付金额
+此时调用 `POST /api/extract/*` 且不带支付头，会收到官方 middleware 返回的 `402` 响应，并带有 `PAYMENT-REQUIRED`。
 
-这可用于演示 API 已切到 x402 风格的收费入口。
+支付成功后，请求会继续进入业务 handler，响应会回传 gateway payment 元数据，调用日志也会记录 `payer`、`network`、`transaction`。
+
+`scripts/demo-runner.ts` 仍然只面向 `mock payment` 与 `receipt` 演示，不接真实 gateway buyer 流程。
 
 ## 5. 推荐的黑客松演示顺序
 1. 先演示 `npm run demo:mock`，证明 API / 统计 / 批量调用可运行

@@ -37,26 +37,13 @@ type PaidExtractionPayload = {
   payment: { mode: 'mock' | 'gateway'; status: 'paid' };
 };
 
-type PaymentRequiredPayload = {
-  payment: {
-    mode: 'mock' | 'gateway';
-    status: 'payment_required';
-  };
-};
-
 const operationPath: Record<ExtractionOperation, `/api/extract/${ExtractionOperation}`> = {
   summary: '/api/extract/summary',
   entities: '/api/extract/entities',
   relations: '/api/extract/relations'
 };
 
-const buildPaidHeaders = (paymentMode: 'mock' | 'gateway'): Record<string, string> => {
-  if (paymentMode === 'gateway') {
-    return {
-      'payment-signature': 'demo-gateway-proof'
-    };
-  }
-
+const buildPaidHeaders = (): Record<string, string> => {
   return {
     'x-payment-token': 'mock-paid'
   };
@@ -66,9 +53,14 @@ export const runDemo = async (options: DemoRunOptions): Promise<DemoRunSummary> 
   const corpus = options.corpus ?? demoCorpus;
   const operations = options.operations ?? ['summary', 'entities', 'relations'];
   const repeatCount = options.repeatCount ?? 1;
+  const paymentMode = options.paymentMode ?? process.env.PAYMENT_MODE ?? 'mock';
   const callLogPath = join(options.artifactDirectory, 'call-log.jsonl');
   const summaryPath = join(options.artifactDirectory, 'summary.json');
   const store = new FileCallLogStore(callLogPath);
+
+  if (paymentMode === 'gateway') {
+    throw new Error('runDemo only supports mock payment mode. Use npm run dev for gateway seller mode.');
+  }
 
   if (options.resetArtifacts ?? true) {
     await rm(options.artifactDirectory, { recursive: true, force: true });
@@ -82,7 +74,7 @@ export const runDemo = async (options: DemoRunOptions): Promise<DemoRunSummary> 
       ...process.env,
       NODE_ENV: 'test',
       PORT: '3000',
-      PAYMENT_MODE: options.paymentMode ?? process.env.PAYMENT_MODE ?? 'mock',
+      PAYMENT_MODE: paymentMode,
       AI_MODE: process.env.AI_MODE ?? 'mock',
       CALL_LOG_PATH: callLogPath
     }),
@@ -110,13 +102,12 @@ export const runDemo = async (options: DemoRunOptions): Promise<DemoRunSummary> 
           continue;
         }
 
-        const requiredPayload = requiredResponse.json as PaymentRequiredPayload;
         const paidResponse = await invokeApp(app, {
           method: 'POST',
           path: operationPath[operation],
           headers: {
             'x-request-id': requestId,
-            ...buildPaidHeaders(requiredPayload.payment.mode)
+            ...buildPaidHeaders()
           },
           body: item
         });

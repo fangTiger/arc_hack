@@ -135,38 +135,4 @@ describe('createExtractRouter', () => {
       }
     });
   });
-
-  it('should expose gateway style payment requirements for unpaid requests', async () => {
-    const { app } = createTestApp({
-      PAYMENT_MODE: 'gateway'
-    });
-
-    const response = await invokeApp(app, {
-      method: 'POST',
-      path: '/api/extract/relations',
-      body
-    });
-
-    expect(response.statusCode).toBe(402);
-    expect(response.json).toEqual({
-      requestId: 'req-001',
-      pricedOperation: {
-        operation: 'relations',
-        price: PRICE_BY_OPERATION.relations
-      },
-      payment: {
-        mode: 'gateway',
-        status: 'payment_required',
-        x402Version: 2,
-        accepts: [
-          {
-            scheme: 'exact',
-            network: 'eip155:5042002',
-            amount: '5000',
-            payTo: '0xSELLER'
-          }
-        ]
-      }
-    });
-  });
 });

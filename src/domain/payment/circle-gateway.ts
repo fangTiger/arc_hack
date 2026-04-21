@@ -1,54 +1,29 @@
-import type {
-  PaymentAdapter,
-  PaymentAuthorizationInput,
-  PaymentAuthorizationResult,
-  Price
-} from './types.js';
+import { createGatewayMiddleware as createOfficialGatewayMiddleware } from '@circle-fin/x402-batching/server';
 
-type GatewayPaymentAdapterOptions = {
+import type { GatewayPaymentMetadata } from './types.js';
+
+export type CircleGatewayMiddlewareOptions = {
   sellerAddress: string;
+  networks?: string[];
+  facilitatorUrl?: string;
 };
 
-const priceToMicroUnits = (price: Price): string => {
-  return Math.round(Number(price.slice(1)) * 1_000_000).toString();
+export type GatewayMiddleware = ReturnType<typeof createOfficialGatewayMiddleware>;
+
+export const createCircleGatewayMiddleware = (
+  options: CircleGatewayMiddlewareOptions
+): GatewayMiddleware => {
+  return createOfficialGatewayMiddleware({
+    sellerAddress: options.sellerAddress,
+    ...(options.networks && options.networks.length > 0 ? { networks: options.networks } : {}),
+    ...(options.facilitatorUrl ? { facilitatorUrl: options.facilitatorUrl } : {})
+  });
 };
 
-export class GatewayPaymentAdapter implements PaymentAdapter {
-  private readonly sellerAddress: string;
-
-  constructor(options: GatewayPaymentAdapterOptions) {
-    this.sellerAddress = options.sellerAddress;
+export const readGatewayPayment = (
+  request: {
+    payment?: GatewayPaymentMetadata;
   }
-
-  async authorize(input: PaymentAuthorizationInput): Promise<PaymentAuthorizationResult> {
-    const signature = input.headers['payment-signature'];
-
-    if (signature) {
-      return {
-        approved: true,
-        payment: {
-          mode: 'gateway',
-          status: 'paid',
-          proof: signature
-        }
-      };
-    }
-
-    return {
-      approved: false,
-      payment: {
-        mode: 'gateway',
-        status: 'payment_required',
-        x402Version: 2,
-        accepts: [
-          {
-            scheme: 'exact',
-            network: 'eip155:5042002',
-            amount: priceToMicroUnits(input.pricedOperation.price),
-            payTo: this.sellerAddress
-          }
-        ]
-      }
-    };
-  }
-}
+): GatewayPaymentMetadata | undefined => {
+  return request.payment;
+};

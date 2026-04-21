@@ -13,6 +13,10 @@ export type CallLogEntry = {
   resultKind: ExtractionResult['kind'];
   createdAt: string;
   receiptTxHash?: `0x${string}`;
+  paymentPayer?: string;
+  paymentAmount?: string;
+  paymentNetwork?: string;
+  paymentTransaction?: string;
 };
 
 export type CallLogStats = {

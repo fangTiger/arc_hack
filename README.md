@@ -8,7 +8,8 @@
 ## 当前能力
 - `AI_MODE=mock|real` 两种抽取模式都可切换
 - `mock payment` 路径可本地完整运行
-- `gateway` 模式当前提供 x402 风格的 `402` challenge 外壳，真实 Circle Gateway 验签/清算会在下一轮补齐
+- `gateway` 模式已接入官方 `createGatewayMiddleware({ sellerAddress })` seller 路径，路由会在支付成功后继续进入业务 handler
+- 可选 `CIRCLE_GATEWAY_NETWORKS` 与 `CIRCLE_GATEWAY_FACILITATOR_URL` 用于本地或测试环境缩小 gateway 入口范围
 - `mock receipt` 与 `arc receipt` writer 都已接好接口
 - 默认调用日志与 `/ops/stats` 共用 `artifacts/demo-run/call-log.jsonl`
 

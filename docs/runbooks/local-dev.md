@@ -4,8 +4,7 @@
 - Node.js `>= 22`
 - npm `>= 11`
 - Foundry 已安装
-  如当前 shell 里没有 `forge`，先执行：
-  `source /Users/captain/.zshenv`
+  如当前 shell 里没有 `forge`，先确认 Foundry 已按官方方式安装并已加入 `PATH`，可用 `which forge` 检查
 
 ## 2. 安装依赖
 ```bash
@@ -43,6 +42,12 @@ npm run dev
 - 设置 `LLM_MODEL`
 - 如上游要求鉴权，再设置 `LLM_API_KEY`
 
+如果要切到真实 Circle Gateway seller 路径：
+- 设置 `PAYMENT_MODE=gateway`
+- 设置 `CIRCLE_SELLER_ADDRESS`
+- 可选设置 `CIRCLE_GATEWAY_NETWORKS`
+- 可选设置 `CIRCLE_GATEWAY_FACILITATOR_URL`
+
 ## 5. 运行 mock demo
 ```bash
 npm run demo:mock
@@ -65,7 +70,7 @@ npm run demo:receipt:mock
 - `DEMO_OPERATIONS`，例如 `summary,entities`
 - `DEMO_REPEAT_COUNT`
 - `RECEIPT_MODE=off|mock|arc`
-- `PAYMENT_MODE=mock|gateway`
+- `PAYMENT_MODE=mock`
 - `AI_MODE=mock|real`
 
 示例：
