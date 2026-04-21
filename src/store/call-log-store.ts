@@ -12,6 +12,7 @@ export type CallLogEntry = {
   paymentStatus: PaymentAcceptedResult['status'];
   resultKind: ExtractionResult['kind'];
   createdAt: string;
+  receiptTxHash?: `0x${string}`;
 };
 
 export type CallLogStats = {

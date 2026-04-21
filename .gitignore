@@ -9,3 +9,5 @@ artifacts/
 .codex/*
 !.codex/config.toml
 !.codex/instructions.md
+cache/
+contracts/out/

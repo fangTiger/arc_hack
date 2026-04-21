@@ -16,7 +16,7 @@
   Executor: Inner Codex
   目标：支持批量发起付费调用、输出调用统计、价格统计、支付结果与演示产物，并为后续 receipt 写链保留稳定 requestId。
 
-- [ ] 1.5 建立 `UsageReceipt` 合约、部署脚本与写链流程
+- [x] 1.5 建立 `UsageReceipt` 合约、部署脚本与写链流程
   Executor: Inner Codex
   目标：部署最小 Arc 凭证合约，并在批量演示流程中为每次成功调用写入一笔 receipt 交易。
 

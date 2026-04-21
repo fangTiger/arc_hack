@@ -1,9 +1,11 @@
 import { mkdir } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 
 import { MockKnowledgeExtractionProvider } from '../src/domain/extraction/mock-provider.js';
 import type { ExtractionOperation, ExtractionRequest } from '../src/domain/extraction/types.js';
 import { MockPaymentAdapter } from '../src/domain/payment/mock-payment.js';
+import type { ReceiptWriter } from '../src/domain/receipt/writer.js';
 import { createExtractRouter } from '../src/routes/extract.js';
 import { FileCallLogStore, type CallLogStats } from '../src/store/call-log-store.js';
 import { demoCorpus } from '../src/demo/corpus.js';
@@ -19,6 +21,7 @@ export type DemoRunOptions = {
   artifactDirectory: string;
   corpus?: ExtractionRequest[];
   operations?: ExtractionOperation[];
+  receiptWriter?: ReceiptWriter;
 };
 
 export type DemoRunSummary = {
@@ -26,6 +29,7 @@ export type DemoRunSummary = {
   successCount: number;
   requestIds: string[];
   stats: CallLogStats;
+  receiptTxHashes?: `0x${string}`[];
 };
 
 const createMockResponse = (): MockResponse => ({
@@ -70,6 +74,7 @@ export const runDemo = async (options: DemoRunOptions): Promise<DemoRunSummary> 
   let requestCounter = 0;
   const requestIdFactory = () => `demo-${String(++requestCounter).padStart(3, '0')}`;
   const requestIds: string[] = [];
+  const receiptTxHashes: `0x${string}`[] = [];
   let successCount = 0;
 
   await mkdir(options.artifactDirectory, { recursive: true });
@@ -104,6 +109,19 @@ export const runDemo = async (options: DemoRunOptions): Promise<DemoRunSummary> 
       requestIds.push(payload.requestId);
       successCount += 1;
 
+      const payloadHash = `0x${createHash('sha256').update(JSON.stringify(payload.result)).digest('hex')}` as `0x${string}`;
+      const receiptResult = options.receiptWriter
+        ? await options.receiptWriter.write({
+            requestId: payload.requestId,
+            operation: payload.pricedOperation.operation,
+            payloadHash
+          })
+        : undefined;
+
+      if (receiptResult) {
+        receiptTxHashes.push(receiptResult.txHash);
+      }
+
       await store.append({
         requestId: payload.requestId,
         operation: payload.pricedOperation.operation,
@@ -111,7 +129,8 @@ export const runDemo = async (options: DemoRunOptions): Promise<DemoRunSummary> 
         paymentMode: payload.payment.mode,
         paymentStatus: payload.payment.status,
         resultKind: payload.result.kind,
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        receiptTxHash: receiptResult?.txHash
       });
     }
   }
@@ -121,7 +140,8 @@ export const runDemo = async (options: DemoRunOptions): Promise<DemoRunSummary> 
     totalRuns: corpus.length * operations.length,
     successCount,
     requestIds,
-    stats
+    stats,
+    ...(options.receiptWriter ? { receiptTxHashes } : {})
   } satisfies DemoRunSummary;
 
   await store.writeSummary(summaryPath, summary);
