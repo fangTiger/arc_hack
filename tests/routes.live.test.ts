@@ -9,6 +9,8 @@ import { loadRuntimeEnv } from '../src/config/env.js';
 import { buildAgentGraph, type AgentSession } from '../src/demo/agent-graph.js';
 import { LiveAgentSessionService, type LiveAgentSession } from '../src/demo/live-session.js';
 import type { AgentGraphRunResult } from '../src/demo/agent-session-runner.js';
+import type { ExtractionRequest } from '../src/domain/extraction/types.js';
+import type { ImportedArticle } from '../src/domain/news-import/index.js';
 import { FileAgentGraphStore } from '../src/store/agent-graph-store.js';
 import { FileLiveAgentSessionStore } from '../src/store/live-session-store.js';
 import { invokeApp } from '../src/support/invoke-app.js';
@@ -25,15 +27,11 @@ const sleep = async (milliseconds: number) => {
   await new Promise((resolve) => setTimeout(resolve, milliseconds));
 };
 
-const createCompletedAgentSession = (sessionId: string): AgentSession => ({
+const createCompletedAgentSession = (sessionId: string, source: ExtractionRequest): AgentSession => ({
   status: 'completed',
   sessionId,
   createdAt: '2026-04-22T10:00:00.000Z',
-  source: {
-    sourceType: 'news',
-    title: 'Arc live console',
-    text: 'Arc introduced gasless nanopayments for AI agents. Circle provides the settlement layer.'
-  },
+  source,
   summary: 'Arc partners with Circle on machine-pay flows.',
   entities: [
     { name: 'Arc', type: 'organization' },
@@ -104,7 +102,10 @@ const waitForSession = async (
 };
 
 const createTestHarness = (overrides: {
-  runAgentGraphSession?: (options: { sessionId: string }) => Promise<AgentGraphRunResult>;
+  runAgentGraphSession?: (options: { sessionId: string; source: ExtractionRequest }) => Promise<AgentGraphRunResult>;
+  newsImporter?: {
+    import: (articleUrl: string) => Promise<ImportedArticle>;
+  };
 } = {}) => {
   const workingDirectory = mkdtempSync(join(tmpdir(), 'arc-hack-live-route-'));
   const runtimeEnv = loadRuntimeEnv({
@@ -122,7 +123,11 @@ const createTestHarness = (overrides: {
     liveSessionStore,
     agentGraphArtifactRootDirectory: agentGraphStore.getRootDirectory(),
     runAgentGraphSession: customRunAgentGraphSession
-      ? async (options) => customRunAgentGraphSession({ sessionId: options.sessionIdFactory?.() ?? 'missing-session-id' })
+      ? async (options) =>
+          customRunAgentGraphSession({
+            sessionId: options.sessionIdFactory?.() ?? 'missing-session-id',
+            source: options.source!
+          })
       : undefined
   });
 
@@ -133,7 +138,8 @@ const createTestHarness = (overrides: {
       runtimeEnv,
       agentGraphStore,
       liveSessionStore,
-      liveSessionService
+      liveSessionService,
+      newsImporter: overrides.newsImporter
     }),
     liveSessionStore,
     workingDirectory
@@ -152,6 +158,13 @@ describe('createLiveRouter', () => {
     expect(response.statusCode).toBe(200);
     expect(response.text).toContain('Live Agent Console');
     expect(response.text).toContain('知识图谱 Live Console');
+    expect(response.text).toContain('文章链接');
+    expect(response.text).toContain('手动文本');
+    expect(response.text).toContain('article-url-input');
+    expect(response.text).toContain('preset-card');
+    expect(response.text).toContain('吴说获悉：香港虚拟资产 ETF 本周净流入创新高');
+    expect(response.text).toContain('香港比特币与以太坊现货 ETF 本周净流入达到近三个月高点');
+    expect(response.text).toContain('"importMode":"preset"');
     expect(response.text).toContain('填充示例');
     expect(response.text).toContain('/demo/live/session');
     expect(response.text).toContain('graph-preview');
@@ -223,6 +236,132 @@ describe('createLiveRouter', () => {
     expect(missingResponse.statusCode).toBe(404);
   });
 
+  it('should import a whitelisted articleUrl, then preserve metadata in live payloads and agent session output', async () => {
+    const importedArticle: ImportedArticle = {
+      sourceUrl: 'https://wublock123.com/p/654321',
+      sourceSite: 'wublock123',
+      sourceType: 'news',
+      title: '吴说获悉：香港虚拟资产 ETF 本周净流入创新高',
+      text: '香港比特币与以太坊现货 ETF 本周净流入达到近三个月高点。'
+    };
+    const newsImporter = {
+      import: async (articleUrl: string) => {
+        expect(articleUrl).toBe(importedArticle.sourceUrl);
+        return importedArticle;
+      }
+    };
+    const { app, liveSessionStore } = createTestHarness({
+      newsImporter,
+      runAgentGraphSession: async ({ sessionId, source }) => ({
+        sessionId,
+        artifactPath: join(tmpdir(), `${sessionId}.json`),
+        graphUrl: `http://127.0.0.1:3000/demo/graph/${sessionId}`,
+        session: createCompletedAgentSession(sessionId, source)
+      })
+    });
+
+    const createResponse = await invokeApp(app, {
+      method: 'POST',
+      path: '/demo/live/session',
+      body: {
+        articleUrl: importedArticle.sourceUrl
+      }
+    });
+
+    expect(createResponse.statusCode).toBe(202);
+
+    const { sessionId } = createResponse.json as { sessionId: string };
+    const session = await waitForSession(liveSessionStore, sessionId);
+    const latestResponse = await invokeApp(app, {
+      method: 'GET',
+      path: '/demo/live/session/latest'
+    });
+    const detailResponse = await invokeApp(app, {
+      method: 'GET',
+      path: `/demo/live/session/${sessionId}`
+    });
+
+    expect(session).toMatchObject({
+      source: {
+        sourceType: 'news',
+        title: importedArticle.title,
+        text: importedArticle.text,
+        metadata: {
+          articleUrl: importedArticle.sourceUrl,
+          sourceSite: importedArticle.sourceSite,
+          importMode: 'link'
+        }
+      },
+      agentSession: {
+        source: {
+          metadata: {
+            articleUrl: importedArticle.sourceUrl,
+            sourceSite: importedArticle.sourceSite,
+            importMode: 'link'
+          }
+        }
+      }
+    });
+    expect((latestResponse.json as LiveAgentSession).source.metadata).toEqual({
+      articleUrl: importedArticle.sourceUrl,
+      sourceSite: importedArticle.sourceSite,
+      importMode: 'link'
+    });
+    expect((detailResponse.json as LiveAgentSession).agentSession?.source.metadata).toEqual({
+      articleUrl: importedArticle.sourceUrl,
+      sourceSite: importedArticle.sourceSite,
+      importMode: 'link'
+    });
+  });
+
+  it('should create a preset-backed live session from cached text without calling the importer', async () => {
+    const newsImporter = {
+      import: async () => {
+        throw new Error('preset should not call importer');
+      }
+    };
+    const { app, liveSessionStore } = createTestHarness({
+      newsImporter,
+      runAgentGraphSession: async ({ sessionId, source }) => ({
+        sessionId,
+        artifactPath: join(tmpdir(), `${sessionId}.json`),
+        graphUrl: `http://127.0.0.1:3000/demo/graph/${sessionId}`,
+        session: createCompletedAgentSession(sessionId, source)
+      })
+    });
+
+    const createResponse = await invokeApp(app, {
+      method: 'POST',
+      path: '/demo/live/session',
+      body: {
+        title: 'PANews：某协议完成 5000 万美元融资',
+        text: 'PANews 4 月 22 日消息，某协议宣布完成 5000 万美元融资。',
+        sourceType: 'news',
+        metadata: {
+          articleUrl: 'https://www.panewslab.com/articles/0123456789',
+          sourceSite: 'panews',
+          importMode: 'preset'
+        }
+      }
+    });
+
+    expect(createResponse.statusCode).toBe(202);
+
+    const { sessionId } = createResponse.json as { sessionId: string };
+    const session = await waitForSession(liveSessionStore, sessionId);
+
+    expect(session?.source.metadata).toEqual({
+      articleUrl: 'https://www.panewslab.com/articles/0123456789',
+      sourceSite: 'panews',
+      importMode: 'preset'
+    });
+    expect(session?.agentSession?.source.metadata).toEqual({
+      articleUrl: 'https://www.panewslab.com/articles/0123456789',
+      sourceSite: 'panews',
+      importMode: 'preset'
+    });
+  });
+
   it('should include receiptTxHash in the completed live session when RECEIPT_MODE is enabled', async () => {
     const workingDirectory = mkdtempSync(join(tmpdir(), 'arc-hack-live-route-receipt-'));
     const runtimeEnv = loadRuntimeEnv({
@@ -272,7 +411,14 @@ describe('createLiveRouter', () => {
 
   it('should reject invalid input and block duplicate creation when an active session already exists', async () => {
     let releaseRunner: (() => void) | undefined;
+    let importCalls = 0;
     const { app, liveSessionStore } = createTestHarness({
+      newsImporter: {
+        import: async () => {
+          importCalls += 1;
+          throw new Error('should not import invalid input');
+        }
+      },
       runAgentGraphSession: async ({ sessionId }): Promise<AgentGraphRunResult> => {
           await new Promise<void>((resolve) => {
             releaseRunner = resolve;
@@ -282,21 +428,40 @@ describe('createLiveRouter', () => {
             sessionId,
             artifactPath: join(tmpdir(), `${sessionId}.json`),
             graphUrl: `http://127.0.0.1:3000/demo/graph/${sessionId}`,
-            session: createCompletedAgentSession(sessionId)
+            session: createCompletedAgentSession(sessionId, {
+              sourceType: 'news',
+              title: 'Active session',
+              text: 'Arc introduced gasless nanopayments for AI agents.'
+            })
           };
         }
     });
 
-    const invalidResponse = await invokeApp(app, {
+    const missingInputResponse = await invokeApp(app, {
+      method: 'POST',
+      path: '/demo/live/session',
+      body: {}
+    });
+    const bothInputsResponse = await invokeApp(app, {
       method: 'POST',
       path: '/demo/live/session',
       body: {
-        title: '   ',
-        text: '   '
+        text: 'Arc introduced gasless nanopayments for AI agents.',
+        articleUrl: 'https://wublock123.com/p/654321'
+      }
+    });
+    const invalidUrlResponse = await invokeApp(app, {
+      method: 'POST',
+      path: '/demo/live/session',
+      body: {
+        articleUrl: 'not-a-valid-url'
       }
     });
 
-    expect(invalidResponse.statusCode).toBe(400);
+    expect(missingInputResponse.statusCode).toBe(400);
+    expect(bothInputsResponse.statusCode).toBe(400);
+    expect(invalidUrlResponse.statusCode).toBe(400);
+    expect(importCalls).toBe(0);
 
     const firstCreateResponse = await invokeApp(app, {
       method: 'POST',

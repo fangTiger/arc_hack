@@ -5,11 +5,11 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { loadRuntimeEnv } from '../src/config/env.js';
-import { demoCorpus } from '../src/demo/corpus.js';
 import {
   runAgentGraphSession,
   type AgentGraphRunnerProgressEvent
 } from '../src/demo/agent-session-runner.js';
+import type { ExtractionRequest } from '../src/domain/extraction/types.js';
 
 const temporaryDirectories: string[] = [];
 
@@ -24,10 +24,20 @@ describe('runAgentGraphSession progress callback', () => {
     const workingDirectory = mkdtempSync(join(tmpdir(), 'arc-hack-live-runner-'));
     temporaryDirectories.push(workingDirectory);
     const progressEvents: AgentGraphRunnerProgressEvent[] = [];
+    const source: ExtractionRequest = {
+      sourceType: 'news',
+      title: 'Arc partners with Circle',
+      text: 'Arc introduced gasless nanopayments for AI agents. Circle provides the settlement layer.',
+      metadata: {
+        articleUrl: 'https://wublock123.com/p/654321',
+        sourceSite: 'wublock123',
+        importMode: 'link'
+      }
+    };
 
     const result = await runAgentGraphSession({
       artifactRootDirectory: join(workingDirectory, 'artifacts', 'agent-graph'),
-      source: demoCorpus[0],
+      source,
       sessionIdFactory: () => 'session-live',
       runtimeEnv: loadRuntimeEnv({
         NODE_ENV: 'test',
@@ -42,6 +52,7 @@ describe('runAgentGraphSession progress callback', () => {
     });
 
     expect(result.sessionId).toBe('session-live');
+    expect(result.session.source.metadata).toEqual(source.metadata);
     expect(progressEvents.map((event) => `${event.type}:${event.step}`)).toEqual([
       'step-started:summary',
       'step-completed:summary',

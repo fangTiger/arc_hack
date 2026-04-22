@@ -6,9 +6,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { runAgentGraphSession } from '../scripts/agent-graph-runner.js';
 import { loadRuntimeEnv } from '../src/config/env.js';
-import { demoCorpus } from '../src/demo/corpus.js';
 import { createReceiptWriter } from '../src/domain/receipt/writer.js';
 import type { GatewayBuyer } from '../src/domain/payment/gateway-buyer.js';
+import type { ExtractionRequest } from '../src/domain/extraction/types.js';
 
 const temporaryDirectories: string[] = [];
 
@@ -28,10 +28,20 @@ describe('runAgentGraphSession', () => {
     const workingDirectory = mkdtempSync(join(tmpdir(), 'arc-hack-agent-graph-runner-'));
     temporaryDirectories.push(workingDirectory);
     const artifactRootDirectory = join(workingDirectory, 'artifacts', 'agent-graph');
+    const source: ExtractionRequest = {
+      sourceType: 'news',
+      title: 'Arc partners with Circle',
+      text: 'Arc introduced gasless nanopayments for AI agents. Circle provides the settlement layer.',
+      metadata: {
+        articleUrl: 'https://wublock123.com/p/654321',
+        sourceSite: 'wublock123',
+        importMode: 'preset'
+      }
+    };
 
     const result = await runAgentGraphSession({
       artifactRootDirectory,
-      source: demoCorpus[0],
+      source,
       sessionIdFactory: () => 'session-mock',
       receiptWriter: createReceiptWriter({ mode: 'mock' }),
       runtimeEnv: loadRuntimeEnv({
@@ -50,7 +60,7 @@ describe('runAgentGraphSession', () => {
     expect(result.graphUrl).toBe('http://127.0.0.1:4010/demo/graph/session-mock');
     expect(result.session).toMatchObject({
       sessionId: 'session-mock',
-      source: demoCorpus[0],
+      source,
       summary: 'Arc partners with Circle. Arc introduced gasless nanopayments for AI agents.',
       entities: [
         { name: 'Arc', type: 'organization' },
@@ -76,6 +86,7 @@ describe('runAgentGraphSession', () => {
     ]);
     expect(persisted).toMatchObject({
       sessionId: 'session-mock',
+      source,
       totals: {
         totalPrice: '$0.012',
         successfulRuns: 3
@@ -88,6 +99,14 @@ describe('runAgentGraphSession', () => {
     temporaryDirectories.push(workingDirectory);
     const artifactRootDirectory = join(workingDirectory, 'artifacts', 'agent-graph');
     const buyer = createMockBuyer();
+    const source: ExtractionRequest = {
+      sourceType: 'news',
+      title: 'Arc partners with Circle',
+      text: 'Arc introduced gasless nanopayments for AI agents. Circle provides the settlement layer.',
+      metadata: {
+        importMode: 'manual'
+      }
+    };
 
     buyer.payBatch = vi.fn().mockResolvedValue({
       probes: [],
@@ -188,7 +207,7 @@ describe('runAgentGraphSession', () => {
 
     const result = await runAgentGraphSession({
       artifactRootDirectory,
-      source: demoCorpus[0],
+      source,
       sessionIdFactory: () => 'session-gateway',
       createBuyer: () => buyer,
       runtimeEnv: {
@@ -205,6 +224,9 @@ describe('runAgentGraphSession', () => {
     });
 
     expect(result.graphUrl).toBe('http://127.0.0.1:3000/demo/graph/session-gateway');
+    expect(result.session.source.metadata).toEqual({
+      importMode: 'manual'
+    });
     expect(result.session.totals).toEqual({
       totalPrice: '$0.012',
       successfulRuns: 3

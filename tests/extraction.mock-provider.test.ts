@@ -10,6 +10,11 @@ const request: ExtractionRequest = {
   text: 'Arc introduced gasless nanopayments for AI agents. Circle provides the settlement layer.'
 };
 
+const weakSignalRequest: ExtractionRequest = {
+  sourceType: 'news',
+  text: '今天星期三，天气不错，没啥特别的了。'
+};
+
 describe('MockKnowledgeExtractionProvider', () => {
   it('should return stable structures for summary entities and relations', async () => {
     const provider = new MockKnowledgeExtractionProvider();
@@ -33,6 +38,30 @@ describe('MockKnowledgeExtractionProvider', () => {
         { source: 'Arc', relation: 'mentions', target: 'Circle' }
       ]
     });
+  });
+
+  it('should return limited topic entities and weak relations for low-signal text', async () => {
+    const provider = new MockKnowledgeExtractionProvider();
+
+    const entitiesResult = await provider.extract('entities', weakSignalRequest);
+    const relationsResult = await provider.extract('relations', weakSignalRequest);
+
+    expect(entitiesResult.kind).toBe('entities');
+    if (entitiesResult.kind !== 'entities') {
+      throw new Error('Expected entities result.');
+    }
+    expect(entitiesResult.entities.length).toBeGreaterThanOrEqual(2);
+    expect(entitiesResult.entities.length).toBeLessThanOrEqual(4);
+    expect(entitiesResult.entities.every((entity) => entity.type === 'topic')).toBe(true);
+    expect(entitiesResult.entities.some((entity) => /星期三|天气|不错|日常|平静/.test(entity.name))).toBe(true);
+
+    expect(relationsResult.kind).toBe('relations');
+    if (relationsResult.kind !== 'relations') {
+      throw new Error('Expected relations result.');
+    }
+    expect(relationsResult.relations.length).toBeGreaterThanOrEqual(1);
+    expect(relationsResult.relations.length).toBeLessThanOrEqual(3);
+    expect(relationsResult.relations.every((relation) => ['日期', '状态', '描述', '提到'].includes(relation.relation))).toBe(true);
   });
 });
 

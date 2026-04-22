@@ -9,6 +9,7 @@ import { createCircleGatewayMiddleware } from './domain/payment/circle-gateway.j
 import { MockPaymentAdapter } from './domain/payment/mock-payment.js';
 import type { PaymentAdapter } from './domain/payment/types.js';
 import { createReceiptWriterFromRuntimeEnv, type ReceiptWriter } from './domain/receipt/writer.js';
+import { WhitelistNewsSourceImporter, type ImportedArticle } from './domain/news-import/index.js';
 import { createExtractRouter } from './routes/extract.js';
 import { createGraphRouter } from './routes/graph.js';
 import { createLiveRouter } from './routes/live.js';
@@ -26,6 +27,9 @@ type CreateAppOptions = {
   agentGraphStore?: FileAgentGraphStore;
   liveSessionStore?: FileLiveAgentSessionStore;
   liveSessionService?: LiveAgentSessionService;
+  newsImporter?: {
+    import: (articleUrl: string) => Promise<ImportedArticle>;
+  };
   receiptWriter?: ReceiptWriter;
   requestIdFactory?: () => string;
 };
@@ -65,6 +69,7 @@ export const createApp = (options: CreateAppOptions = {}) => {
       receiptWriter,
       agentGraphArtifactRootDirectory: agentGraphStore.getRootDirectory()
     });
+  const newsImporter = options.newsImporter ?? new WhitelistNewsSourceImporter();
   const extractionProvider = options.extractionProvider ?? createExtractionProvider(runtimeEnv);
   const paymentAdapter =
     runtimeEnv.paymentMode === 'mock' ? options.paymentAdapter ?? createPaymentAdapter(runtimeEnv) : undefined;
@@ -102,7 +107,8 @@ export const createApp = (options: CreateAppOptions = {}) => {
     '/demo/live',
     createLiveRouter({
       liveSessionService,
-      runtimeEnv
+      runtimeEnv,
+      newsImporter
     })
   );
   app.use('/ops', createOpsRouter({ callLogStore }));

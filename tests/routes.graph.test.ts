@@ -18,46 +18,59 @@ afterEach(() => {
   }
 });
 
-const createSession = (): AgentSession => ({
-  status: 'completed',
-  sessionId: 'session-graph',
-  createdAt: '2026-04-22T10:00:00.000Z',
-  source: {
-    sourceType: 'news',
-    title: 'Arc partners with Circle',
-    text: 'Arc introduced gasless nanopayments for AI agents. Circle provides the settlement layer.'
-  },
-  summary: 'Arc partners with Circle on machine-pay flows.',
-  entities: [
-    { name: 'Arc', type: 'organization' },
-    { name: 'Circle', type: 'organization' }
-  ],
-  relations: [{ source: 'Arc', relation: 'mentions', target: 'Circle' }],
-  runs: [
-    {
-      requestId: 'agent-001',
-      operation: 'summary',
-      price: '$0.004',
-      paymentTransaction: 'mock-agent-001',
-      paymentAmount: '4000',
-      paymentNetwork: 'mock-network',
-      paymentPayer: '0x70a65aa0cb3ee82cf8ba353d585f880c943d68c0',
-      payloadHash: '0x9a8cea55da137cde718fd2416c85c46f509f49dfd7630b539b9ba5e3a34c90fa',
-      receiptTxHash: '0xb716431da93f68d44743c4348da003f1c86a69497fa20bc583f6e6c8e6fbbdd8'
-    }
-  ],
-  graph: buildAgentGraph(
-    [
+const createSession = (overrides: Partial<AgentSession> = {}): AgentSession => {
+  const baseSession: AgentSession = {
+    status: 'completed',
+    sessionId: 'session-graph',
+    createdAt: '2026-04-22T10:00:00.000Z',
+    source: {
+      sourceType: 'news',
+      title: 'Arc partners with Circle',
+      text: 'Arc introduced gasless nanopayments for AI agents. Circle provides the settlement layer.',
+      metadata: {
+        articleUrl: 'https://wublock123.com/p/654321',
+        sourceSite: 'wublock123',
+        importMode: 'link'
+      }
+    },
+    summary: 'Arc partners with Circle on machine-pay flows.',
+    entities: [
       { name: 'Arc', type: 'organization' },
       { name: 'Circle', type: 'organization' }
     ],
-    [{ source: 'Arc', relation: 'mentions', target: 'Circle' }]
-  ),
-  totals: {
-    totalPrice: '$0.004',
-    successfulRuns: 1
-  }
-});
+    relations: [{ source: 'Arc', relation: 'mentions', target: 'Circle' }],
+    runs: [
+      {
+        requestId: 'agent-001',
+        operation: 'summary',
+        price: '$0.004',
+        paymentTransaction: 'mock-agent-001',
+        paymentAmount: '4000',
+        paymentNetwork: 'mock-network',
+        paymentPayer: '0x70a65aa0cb3ee82cf8ba353d585f880c943d68c0',
+        payloadHash: '0x9a8cea55da137cde718fd2416c85c46f509f49dfd7630b539b9ba5e3a34c90fa',
+        receiptTxHash: '0xb716431da93f68d44743c4348da003f1c86a69497fa20bc583f6e6c8e6fbbdd8'
+      }
+    ],
+    graph: buildAgentGraph(
+      [
+        { name: 'Arc', type: 'organization' },
+        { name: 'Circle', type: 'organization' }
+      ],
+      [{ source: 'Arc', relation: 'mentions', target: 'Circle' }]
+    ),
+    totals: {
+      totalPrice: '$0.004',
+      successfulRuns: 1
+    }
+  };
+
+  return {
+    ...baseSession,
+    ...overrides,
+    source: overrides.source ? { ...overrides.source } : baseSession.source
+  };
+};
 
 const createTestApp = async () => {
   const workingDirectory = mkdtempSync(join(tmpdir(), 'arc-hack-graph-route-'));
@@ -79,8 +92,30 @@ const createTestApp = async () => {
   });
 };
 
+const createTestAppWithSessions = async (sessions: AgentSession[]) => {
+  const workingDirectory = mkdtempSync(join(tmpdir(), 'arc-hack-graph-route-'));
+  const callLogPath = join(workingDirectory, 'call-log.jsonl');
+  const agentGraphStore = new FileAgentGraphStore(join(workingDirectory, 'artifacts', 'agent-graph'));
+  temporaryDirectories.push(workingDirectory);
+
+  for (const session of sessions) {
+    await agentGraphStore.writeSession(session);
+  }
+
+  return createApp({
+    runtimeEnv: loadRuntimeEnv({
+      NODE_ENV: 'test',
+      PORT: '3000',
+      PAYMENT_MODE: 'mock',
+      AI_MODE: 'mock',
+      CALL_LOG_PATH: callLogPath
+    }),
+    agentGraphStore
+  });
+};
+
 describe('createGraphRouter', () => {
-  it('should render the latest graph page with summary, svg graph and payment evidence', async () => {
+  it('should render the latest graph page with source metadata, copy actions and article link', async () => {
     const app = await createTestApp();
 
     const response = await invokeApp(app, {
@@ -98,14 +133,31 @@ describe('createGraphRouter', () => {
     expect(response.text).toContain('复制');
     expect(response.text).toContain('https://testnet.arcscan.app/tx/0xb716431da93f68d44743c4348da003f1c86a69497fa20bc583f6e6c8e6fbbdd8');
     expect(response.text).toContain('https://testnet.arcscan.app/address/0x70a65aa0cb3ee82cf8ba353d585f880c943d68c0');
+    expect(response.text).toContain('导入来源');
+    expect(response.text).toContain('articleUrl');
+    expect(response.text).toContain('sourceSite');
+    expect(response.text).toContain('importMode');
+    expect(response.text).toContain('wublock123');
+    expect(response.text).toContain('https://wublock123.com/p/654321');
+    expect(response.text).toContain('原文');
   });
 
-  it('should render a session page by id and return 404 when the session is missing', async () => {
-    const app = await createTestApp();
+  it('should keep old sessions without metadata compatible and return 404 when the session is missing', async () => {
+    const app = await createTestAppWithSessions([
+      createSession(),
+      createSession({
+        sessionId: 'session-legacy',
+        source: {
+          sourceType: 'news',
+          title: 'Legacy session',
+          text: 'Legacy graph source text.'
+        }
+      })
+    ]);
 
     const okResponse = await invokeApp(app, {
       method: 'GET',
-      path: '/demo/graph/session-graph'
+      path: '/demo/graph/session-legacy'
     });
     const missingResponse = await invokeApp(app, {
       method: 'GET',
@@ -114,8 +166,9 @@ describe('createGraphRouter', () => {
 
     expect(okResponse.statusCode).toBe(200);
     expect(okResponse.text).toContain('Graph Nodes');
-    expect(okResponse.text).toContain('Arc');
-    expect(okResponse.text).toContain('Circle');
+    expect(okResponse.text).toContain('Legacy session');
+    expect(okResponse.text).toContain('未记录导入来源');
+    expect(okResponse.text).not.toContain('https://wublock123.com/p/654321');
     expect(missingResponse.statusCode).toBe(404);
     expect(missingResponse.text).toContain('Agent graph session not found');
   });

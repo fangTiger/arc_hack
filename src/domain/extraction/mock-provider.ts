@@ -1,4 +1,10 @@
 import type { KnowledgeExtractionProvider } from './provider.js';
+import {
+  extractStrongEntityHints,
+  isWeakSignalRequest,
+  normalizeEntities,
+  normalizeRelations
+} from './normalizer.js';
 import type {
   EntityExtractionResult,
   ExtractionEntity,
@@ -10,8 +16,6 @@ import type {
 } from './types.js';
 
 const sentencePattern = /[^.!?]+[.!?]?/g;
-const capitalizedTokenPattern = /\b[A-Z][a-zA-Z]+\b/g;
-
 const getSentences = (request: ExtractionRequest): string[] => {
   const title = request.title?.trim();
   const text = request.text.trim();
@@ -30,23 +34,16 @@ const buildSummary = (request: ExtractionRequest): SummaryExtractionResult => {
 };
 
 const buildEntities = (request: ExtractionRequest): EntityExtractionResult => {
-  const source = [request.title, request.text].filter(Boolean).join(' ');
-  const uniqueNames = Array.from(new Set(source.match(capitalizedTokenPattern) ?? [])).slice(0, 2);
-  const entities: ExtractionEntity[] = uniqueNames.map((name) => ({
-    name,
-    type: 'organization'
-  }));
-
   return {
     kind: 'entities',
-    entities
+    entities: normalizeEntities(request, extractStrongEntityHints(request))
   };
 };
 
 const buildRelations = (request: ExtractionRequest): RelationExtractionResult => {
   const entities = buildEntities(request).entities;
-  const relations =
-    entities.length >= 2
+  const rawRelations =
+    !isWeakSignalRequest(request) && entities.length >= 2
       ? [
           {
             source: entities[0].name,
@@ -58,7 +55,7 @@ const buildRelations = (request: ExtractionRequest): RelationExtractionResult =>
 
   return {
     kind: 'relations',
-    relations
+    relations: normalizeRelations(request, rawRelations, entities)
   };
 };
 

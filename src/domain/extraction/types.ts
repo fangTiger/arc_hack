@@ -1,4 +1,13 @@
+import type { SupportedNewsSite } from '../news-import/types.js';
+
 export type SourceType = 'news' | 'research';
+export type SourceImportMode = 'manual' | 'link' | 'preset';
+
+export type SourceMetadata = {
+  articleUrl?: string;
+  sourceSite?: SupportedNewsSite;
+  importMode?: SourceImportMode;
+};
 
 export type ExtractionOperation = 'summary' | 'entities' | 'relations';
 
@@ -6,6 +15,7 @@ export type ExtractionRequest = {
   sourceType: SourceType;
   title?: string;
   text: string;
+  metadata?: SourceMetadata;
 };
 
 export type SummaryExtractionResult = {

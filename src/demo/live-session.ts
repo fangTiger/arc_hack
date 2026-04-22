@@ -1,7 +1,14 @@
 import { randomUUID } from 'node:crypto';
 
 import type { RuntimeEnv } from '../config/env.js';
-import type { ExtractionEntity, ExtractionOperation, ExtractionRelation, ExtractionRequest, SourceType } from '../domain/extraction/types.js';
+import type {
+  ExtractionEntity,
+  ExtractionOperation,
+  ExtractionRelation,
+  ExtractionRequest,
+  SourceMetadata,
+  SourceType
+} from '../domain/extraction/types.js';
 import type { Price } from '../domain/payment/types.js';
 import type { ReceiptWriter } from '../domain/receipt/writer.js';
 import type { AgentSession, AgentSessionRun } from './agent-graph.js';
@@ -61,6 +68,7 @@ export type LiveAgentSessionCreateInput = {
   title?: string;
   text: string;
   sourceType?: SourceType;
+  metadata?: SourceMetadata;
 };
 
 export type LiveAgentSessionStartResult =
@@ -96,6 +104,21 @@ const cloneSteps = (steps: LiveSessionStep[]): LiveSessionStep[] => steps.map((s
 const normalizeTitle = (title: string | undefined): string | undefined => {
   const trimmed = title?.trim();
   return trimmed ? trimmed : undefined;
+};
+
+const normalizeMetadata = (metadata: SourceMetadata | undefined): SourceMetadata | undefined => {
+  if (!metadata) {
+    return undefined;
+  }
+
+  const normalizedArticleUrl = metadata.articleUrl?.trim();
+  const normalizedMetadata: SourceMetadata = {
+    ...(normalizedArticleUrl ? { articleUrl: normalizedArticleUrl } : {}),
+    ...(metadata.sourceSite ? { sourceSite: metadata.sourceSite } : {}),
+    ...(metadata.importMode ? { importMode: metadata.importMode } : {})
+  };
+
+  return Object.keys(normalizedMetadata).length > 0 ? normalizedMetadata : undefined;
 };
 
 export const isActiveLiveSession = (session: LiveAgentSession | null | undefined): session is LiveAgentSession =>
@@ -220,7 +243,8 @@ const extractErrorMessage = (error: unknown): string => {
 const buildSource = (input: LiveAgentSessionCreateInput): ExtractionRequest => ({
   sourceType: input.sourceType ?? 'news',
   ...(normalizeTitle(input.title) ? { title: normalizeTitle(input.title) } : {}),
-  text: input.text.trim()
+  text: input.text.trim(),
+  ...(normalizeMetadata(input.metadata) ? { metadata: normalizeMetadata(input.metadata) } : {})
 });
 
 export class LiveAgentSessionService {

@@ -39,6 +39,14 @@ npm run dev
 - `GET /demo/graph/:sessionId`
 - `GET /ops/stats`
 
+live console 创建契约：
+- `POST /demo/live/session` 只接受二选一输入
+- 文本模式：`text` + 可选 `title` / `sourceType` / `metadata`
+- 链接模式：`articleUrl`
+- `text` 与 `articleUrl` 同时出现会返回 `400`
+- 两者都缺失会返回 `400`
+- 链接模式只允许白名单来源：`wublock123`、`PANews`、`ChainCatcher`
+
 默认情况下，`/ops/stats` 读取 `CALL_LOG_PATH`，其默认值是：
 - `artifacts/demo-run/call-log.jsonl`
 
@@ -104,6 +112,11 @@ CLI 会打印：
 - `GET /demo/graph/latest`
 - `GET /demo/graph/<sessionId>`
 
+live console 输入模式：
+- `文章链接`：后端会先导入白名单原文，再创建 live session
+- `手动文本`：直接提交输入框内容
+- `预置卡片`：直接提交本地缓存导入结果，脱网也能演示
+
 live session 状态产物：
 - `artifacts/live-console/<sessionId>/live-session.json`
 - `artifacts/live-console/latest.json`
@@ -151,11 +164,19 @@ http://127.0.0.1:3000/demo/live
 ```
 
 页面会：
-- 默认填充 sample 文本
+- 支持在 `文章链接 / 手动文本 / 预置卡片` 三种模式之间切换
 - 调用 `POST /demo/live/session`
 - 每秒轮询 `GET /demo/live/session/:sessionId`
 - 在 `mock` 路径下按 `summary -> entities -> relations` 逐步推进
 - 在同页展示 graph 预览与 payment / receipt 证据
+- 预置卡片直接使用本地缓存导入结果，不依赖实时抓取远端网页
+- 链接模式只接受白名单站点：`wublock123`、`PANews`、`ChainCatcher`
+- 完成后跳到 graph 页面时，可看到 `articleUrl`、`sourceSite`、导入标题与 `importMode`
+
+推荐录屏路径：
+1. 先用 `预置卡片` 录一遍，证明脱网也能稳定演示。
+2. 完成后切到 `GET /demo/graph/latest`，展示来源元数据和可点击原文链接。
+3. 如果现场网络稳定，再补录一条 `文章链接` 模式，使用白名单来源 URL。
 
 边界：
 - `GET /demo/live/session/latest` 无命中时固定返回 `404`
@@ -234,3 +255,4 @@ http://127.0.0.1:3000/demo/live
 - 完成后返回最终 `summary / entities / relations / graph` 与 payment evidence
 - 不承诺像 `mock` 一样逐步展示每一步 payment 回调
 - 如果 `RECEIPT_MODE=arc` 且 Arc 环境变量完整，完成后会返回真实 `receiptTxHash`
+- 如需降低现场网络风险，优先使用 `预置卡片` 模式；它读取的是本地缓存导入结果，不依赖远端新闻站点
