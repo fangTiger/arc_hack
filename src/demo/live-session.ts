@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { RuntimeEnv } from '../config/env.js';
 import type { ExtractionEntity, ExtractionOperation, ExtractionRelation, ExtractionRequest, SourceType } from '../domain/extraction/types.js';
 import type { Price } from '../domain/payment/types.js';
+import type { ReceiptWriter } from '../domain/receipt/writer.js';
 import type { AgentSession, AgentSessionRun } from './agent-graph.js';
 import {
   runAgentGraphSession as defaultRunAgentGraphSession,
@@ -76,6 +77,7 @@ type LiveAgentSessionServiceOptions = {
   runtimeEnv: RuntimeEnv;
   liveSessionStore: FileLiveAgentSessionStore;
   agentGraphArtifactRootDirectory: string;
+  receiptWriter?: ReceiptWriter;
   graphBaseUrl?: string;
   sessionIdFactory?: () => string;
   runAgentGraphSession?: (options: AgentGraphRunOptions) => Promise<AgentGraphRunResult>;
@@ -279,6 +281,7 @@ export class LiveAgentSessionService {
         artifactRootDirectory: this.options.agentGraphArtifactRootDirectory,
         source: session.source,
         runtimeEnv: this.options.runtimeEnv,
+        receiptWriter: this.options.receiptWriter,
         graphBaseUrl: this.options.graphBaseUrl,
         sessionIdFactory: () => session.sessionId,
         onProgress: async (event) => {

@@ -41,9 +41,9 @@ const createSession = (): AgentSession => ({
       paymentTransaction: 'mock-agent-001',
       paymentAmount: '4000',
       paymentNetwork: 'mock-network',
-      paymentPayer: 'mock-buyer',
-      payloadHash: '0xsummary',
-      receiptTxHash: '0xreceipt'
+      paymentPayer: '0x70a65aa0cb3ee82cf8ba353d585f880c943d68c0',
+      payloadHash: '0x9a8cea55da137cde718fd2416c85c46f509f49dfd7630b539b9ba5e3a34c90fa',
+      receiptTxHash: '0xb716431da93f68d44743c4348da003f1c86a69497fa20bc583f6e6c8e6fbbdd8'
     }
   ],
   graph: buildAgentGraph(
@@ -93,7 +93,11 @@ describe('createGraphRouter', () => {
     expect(response.text).toContain('Arc partners with Circle on machine-pay flows.');
     expect(response.text).toContain('<svg');
     expect(response.text).toContain('mock-agent-001');
-    expect(response.text).toContain('0xreceipt');
+    expect(response.text).toContain('0xb716431da93f68d44743c4348da003f1c86a69497fa20bc583f6e6c8e6fbbdd8');
+    expect(response.text).toContain('copyField');
+    expect(response.text).toContain('复制');
+    expect(response.text).toContain('https://testnet.arcscan.app/tx/0xb716431da93f68d44743c4348da003f1c86a69497fa20bc583f6e6c8e6fbbdd8');
+    expect(response.text).toContain('https://testnet.arcscan.app/address/0x70a65aa0cb3ee82cf8ba353d585f880c943d68c0');
   });
 
   it('should render a session page by id and return 404 when the session is missing', async () => {

@@ -50,7 +50,9 @@ npm run dev
 
 如果要切到真实 Circle Gateway seller 路径：
 - 设置 `PAYMENT_MODE=gateway`
+- 如需 live console 也补写 receipt，设置 `RECEIPT_MODE=arc`
 - 设置 `CIRCLE_SELLER_ADDRESS`
+- 可选设置 `ARC_EXPLORER_BASE_URL`
 - 可选设置 `CIRCLE_GATEWAY_NETWORKS`
 - 可选设置 `CIRCLE_GATEWAY_FACILITATOR_URL`
 
@@ -219,7 +221,7 @@ npm run demo:agent:gateway
 ## 12. 录制真实 gateway live console
 先启动 seller：
 ```bash
-PAYMENT_MODE=gateway npm run dev
+PAYMENT_MODE=gateway RECEIPT_MODE=arc npm run dev
 ```
 
 再打开：
@@ -231,3 +233,4 @@ http://127.0.0.1:3000/demo/live
 - 页面只保证整体 `queued / running / completed / failed`
 - 完成后返回最终 `summary / entities / relations / graph` 与 payment evidence
 - 不承诺像 `mock` 一样逐步展示每一步 payment 回调
+- 如果 `RECEIPT_MODE=arc` 且 Arc 环境变量完整，完成后会返回真实 `receiptTxHash`

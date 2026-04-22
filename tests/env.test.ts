@@ -28,6 +28,7 @@ describe('loadRuntimeEnv', () => {
       PAYMENT_MODE: 'gateway',
       AI_MODE: 'real',
       CALL_LOG_PATH: join('/tmp', 'arc-hack', 'call-log.jsonl'),
+      ARC_EXPLORER_BASE_URL: 'https://testnet.arcscan.app',
       LLM_BASE_URL: 'https://llm.example.com/v1',
       LLM_MODEL: 'gpt-test',
       LLM_API_KEY: 'secret'
@@ -38,7 +39,9 @@ describe('loadRuntimeEnv', () => {
       port: 4300,
       paymentMode: 'gateway',
       aiMode: 'real',
+      receiptMode: 'off',
       callLogPath: join('/tmp', 'arc-hack', 'call-log.jsonl'),
+      arcExplorerBaseUrl: 'https://testnet.arcscan.app',
       llmBaseUrl: 'https://llm.example.com/v1',
       llmModel: 'gpt-test',
       llmApiKey: 'secret'
@@ -52,6 +55,7 @@ describe('loadRuntimeEnv', () => {
       PORT: '4300',
       PAYMENT_MODE: 'gateway',
       AI_MODE: 'mock',
+      RECEIPT_MODE: 'arc',
       CALL_LOG_PATH: join('/tmp', 'arc-hack', 'call-log.jsonl'),
       CIRCLE_SELLER_ADDRESS: '0xSeller',
       CIRCLE_GATEWAY_NETWORKS: 'eip155:5042002,eip155:84532',
@@ -59,6 +63,7 @@ describe('loadRuntimeEnv', () => {
     });
 
     expect(runtimeEnv).toMatchObject({
+      receiptMode: 'arc',
       circleSellerAddress: '0xSeller',
       circleGatewayNetworks: ['eip155:5042002', 'eip155:84532'],
       circleGatewayFacilitatorUrl: 'https://gateway.example/facilitator'

@@ -151,9 +151,13 @@ describe('createLiveRouter', () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.text).toContain('Live Agent Console');
+    expect(response.text).toContain('知识图谱 Live Console');
     expect(response.text).toContain('填充示例');
     expect(response.text).toContain('/demo/live/session');
     expect(response.text).toContain('graph-preview');
+    expect(response.text).toContain('copyField');
+    expect(response.text).toContain('https://testnet.arcscan.app');
+    expect(response.text).not.toContain('把 agent 运行过程直接录进同一块屏幕');
   });
 
   it('should create a live session, expose latest and detail endpoints, and return 404 when latest is missing', async () => {
@@ -217,6 +221,53 @@ describe('createLiveRouter', () => {
     expect(detailResponse.statusCode).toBe(200);
     expect((detailResponse.json as LiveAgentSession).agentSession?.graph.nodes).toHaveLength(2);
     expect(missingResponse.statusCode).toBe(404);
+  });
+
+  it('should include receiptTxHash in the completed live session when RECEIPT_MODE is enabled', async () => {
+    const workingDirectory = mkdtempSync(join(tmpdir(), 'arc-hack-live-route-receipt-'));
+    const runtimeEnv = loadRuntimeEnv({
+      NODE_ENV: 'test',
+      PORT: '3000',
+      PAYMENT_MODE: 'mock',
+      AI_MODE: 'mock',
+      RECEIPT_MODE: 'mock',
+      CALL_LOG_PATH: join(workingDirectory, 'call-log.jsonl')
+    });
+    const agentGraphStore = new FileAgentGraphStore(join(workingDirectory, 'artifacts', 'agent-graph'));
+    const liveSessionStore = new FileLiveAgentSessionStore(join(workingDirectory, 'artifacts', 'live-console'));
+
+    temporaryDirectories.push(workingDirectory);
+
+    const app = createApp({
+      runtimeEnv,
+      agentGraphStore,
+      liveSessionStore
+    });
+
+    const createResponse = await invokeApp(app, {
+      method: 'POST',
+      path: '/demo/live/session',
+      body: {
+        title: 'Arc live receipt',
+        text: 'Arc introduced gasless nanopayments for AI agents. Circle provides the settlement layer.'
+      }
+    });
+
+    expect(createResponse.statusCode).toBe(202);
+
+    const { sessionId } = createResponse.json as { sessionId: string };
+    const session = await waitForSession(liveSessionStore, sessionId);
+
+    expect(session?.steps.map((step) => step.receiptTxHash ?? null)).toEqual([
+      expect.stringMatching(/^0x[a-f0-9]{64}$/),
+      expect.stringMatching(/^0x[a-f0-9]{64}$/),
+      expect.stringMatching(/^0x[a-f0-9]{64}$/)
+    ]);
+    expect(session?.agentSession?.runs.map((run) => run.receiptTxHash ?? null)).toEqual([
+      expect.stringMatching(/^0x[a-f0-9]{64}$/),
+      expect.stringMatching(/^0x[a-f0-9]{64}$/),
+      expect.stringMatching(/^0x[a-f0-9]{64}$/)
+    ]);
   });
 
   it('should reject invalid input and block duplicate creation when an active session already exists', async () => {

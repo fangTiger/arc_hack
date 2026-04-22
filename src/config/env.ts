@@ -5,6 +5,7 @@ import { CHAIN_CONFIGS, type SupportedChainName } from '@circle-fin/x402-batchin
 
 export type PaymentMode = 'mock' | 'gateway';
 export type AiMode = 'mock' | 'real';
+export type ReceiptMode = 'off' | 'mock' | 'arc';
 
 export type GatewayBuyerEnv = {
   baseUrl: string;
@@ -19,6 +20,8 @@ export type RuntimeEnv = {
   port: number;
   paymentMode: PaymentMode;
   aiMode: AiMode;
+  receiptMode: ReceiptMode;
+  arcExplorerBaseUrl?: string;
   circleSellerAddress?: string;
   circleGatewayNetworks?: string[];
   circleGatewayFacilitatorUrl?: string;
@@ -74,6 +77,18 @@ const parseAiMode = (value: string | undefined): AiMode => {
   }
 
   throw new Error(`Invalid AI_MODE value: ${value}`);
+};
+
+const parseReceiptMode = (value: string | undefined): ReceiptMode => {
+  if (!value) {
+    return 'off';
+  }
+
+  if (value === 'off' || value === 'mock' || value === 'arc') {
+    return value;
+  }
+
+  throw new Error(`Invalid RECEIPT_MODE value: ${value}`);
 };
 
 const parseCommaSeparatedList = (value: string | undefined): string[] | undefined => {
@@ -177,6 +192,8 @@ export const loadRuntimeEnv = (source: EnvSource): RuntimeEnv => {
     port: parsePort(source.PORT),
     paymentMode: parsePaymentMode(source.PAYMENT_MODE),
     aiMode: parseAiMode(source.AI_MODE),
+    receiptMode: parseReceiptMode(source.RECEIPT_MODE),
+    arcExplorerBaseUrl: source.ARC_EXPLORER_BASE_URL,
     circleSellerAddress: source.CIRCLE_SELLER_ADDRESS,
     circleGatewayNetworks: parseCommaSeparatedList(source.CIRCLE_GATEWAY_NETWORKS),
     circleGatewayFacilitatorUrl: source.CIRCLE_GATEWAY_FACILITATOR_URL,

@@ -82,7 +82,9 @@ npm run demo:agent:gateway
 ## 重要说明
 - 运行时会自动读取项目根目录的 `.env`
 - 当前默认启动是 `PAYMENT_MODE=mock`、`AI_MODE=mock`
+- `ARC_EXPLORER_BASE_URL` 默认为 `https://testnet.arcscan.app`，用于页面里的链上跳转链接
 - `AI_MODE=real` 需要配置 `LLM_BASE_URL`、`LLM_MODEL`，可选 `LLM_API_KEY`
+- `RECEIPT_MODE=mock|arc` 时，`/demo/live` 和 agent graph session 都会尝试补写 receipt；`RECEIPT_MODE=arc` 需要 `ARC_RPC_URL`、`ARC_PRIVATE_KEY`、`USAGE_RECEIPT_ADDRESS`
 - receipt 合约已可本地测试，并可通过 Foundry script 部署到 Arc
 - 真实 gateway buyer 需要 `GATEWAY_BUYER_BASE_URL`、`GATEWAY_BUYER_PRIVATE_KEY`、`GATEWAY_BUYER_CHAIN`
 - agent graph CLI 可选读取 `AGENT_SOURCE_TYPE`、`AGENT_SOURCE_TITLE`、`AGENT_SOURCE_TEXT`、`GRAPH_BASE_URL`

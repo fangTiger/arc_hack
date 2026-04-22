@@ -8,6 +8,7 @@ import { RealKnowledgeExtractionProvider } from './domain/extraction/real-provid
 import { createCircleGatewayMiddleware } from './domain/payment/circle-gateway.js';
 import { MockPaymentAdapter } from './domain/payment/mock-payment.js';
 import type { PaymentAdapter } from './domain/payment/types.js';
+import { createReceiptWriterFromRuntimeEnv, type ReceiptWriter } from './domain/receipt/writer.js';
 import { createExtractRouter } from './routes/extract.js';
 import { createGraphRouter } from './routes/graph.js';
 import { createLiveRouter } from './routes/live.js';
@@ -25,6 +26,7 @@ type CreateAppOptions = {
   agentGraphStore?: FileAgentGraphStore;
   liveSessionStore?: FileLiveAgentSessionStore;
   liveSessionService?: LiveAgentSessionService;
+  receiptWriter?: ReceiptWriter;
   requestIdFactory?: () => string;
 };
 
@@ -52,6 +54,7 @@ export const createApp = (options: CreateAppOptions = {}) => {
   const runtimeEnv = options.runtimeEnv ?? getRuntimeEnv();
   const callLogStore = options.callLogStore ?? new FileCallLogStore(runtimeEnv.callLogPath);
   const agentGraphStore = options.agentGraphStore ?? new FileAgentGraphStore(join(process.cwd(), 'artifacts', 'agent-graph'));
+  const receiptWriter = options.receiptWriter ?? createReceiptWriterFromRuntimeEnv(runtimeEnv);
   const liveSessionStore =
     options.liveSessionStore ?? new FileLiveAgentSessionStore(join(process.cwd(), 'artifacts', 'live-console'));
   const liveSessionService =
@@ -59,6 +62,7 @@ export const createApp = (options: CreateAppOptions = {}) => {
     new LiveAgentSessionService({
       runtimeEnv,
       liveSessionStore,
+      receiptWriter,
       agentGraphArtifactRootDirectory: agentGraphStore.getRootDirectory()
     });
   const extractionProvider = options.extractionProvider ?? createExtractionProvider(runtimeEnv);
@@ -87,7 +91,13 @@ export const createApp = (options: CreateAppOptions = {}) => {
       requestIdFactory: options.requestIdFactory
     })
   );
-  app.use('/demo/graph', createGraphRouter({ agentGraphStore }));
+  app.use(
+    '/demo/graph',
+    createGraphRouter({
+      agentGraphStore,
+      runtimeEnv
+    })
+  );
   app.use(
     '/demo/live',
     createLiveRouter({

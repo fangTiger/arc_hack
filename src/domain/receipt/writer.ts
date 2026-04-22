@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
+import type { RuntimeEnv } from '../../config/env.js';
 import type { ExtractionOperation } from '../extraction/types.js';
 
 const execFileAsync = promisify(execFile);
@@ -107,4 +108,27 @@ export const createReceiptWriter = (config: ReceiptWriterConfig): ReceiptWriter 
   }
 
   return new ArcReceiptWriter(config);
+};
+
+export const createReceiptWriterFromRuntimeEnv = (
+  runtimeEnv: Pick<RuntimeEnv, 'receiptMode' | 'arcRpcUrl' | 'usageReceiptAddress' | 'arcPrivateKey'>
+): ReceiptWriter | undefined => {
+  if (runtimeEnv.receiptMode === 'off') {
+    return undefined;
+  }
+
+  if (runtimeEnv.receiptMode === 'mock') {
+    return createReceiptWriter({ mode: 'mock' });
+  }
+
+  if (!runtimeEnv.arcRpcUrl || !runtimeEnv.usageReceiptAddress || !runtimeEnv.arcPrivateKey) {
+    throw new Error('ARC_RPC_URL, USAGE_RECEIPT_ADDRESS and ARC_PRIVATE_KEY are required for RECEIPT_MODE=arc.');
+  }
+
+  return createReceiptWriter({
+    mode: 'arc',
+    rpcUrl: runtimeEnv.arcRpcUrl,
+    contractAddress: runtimeEnv.usageReceiptAddress,
+    privateKey: runtimeEnv.arcPrivateKey
+  });
 };

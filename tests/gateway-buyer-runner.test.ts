@@ -151,6 +151,7 @@ describe('runGatewayBuyerDemo', () => {
           port: 3000,
           paymentMode: 'gateway',
           aiMode: 'mock',
+          receiptMode: 'off',
           callLogPath: join(artifactDirectory, 'call-log.jsonl'),
           gatewayBuyerBaseUrl: 'http://127.0.0.1:3000',
           gatewayBuyerPrivateKey: '0x1234',
@@ -214,6 +215,7 @@ describe('runGatewayBuyerDemo', () => {
             port: 3000,
             paymentMode: 'gateway',
             aiMode: 'mock',
+            receiptMode: 'off',
             callLogPath: join(workingDirectory, 'artifacts', 'call-log.jsonl')
           }
         })

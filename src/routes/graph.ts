@@ -1,10 +1,18 @@
 import { Router } from 'express';
 
 import type { AgentSession } from '../demo/agent-graph.js';
+import type { RuntimeEnv } from '../config/env.js';
 import type { FileAgentGraphStore } from '../store/agent-graph-store.js';
+import {
+  buildArcExplorerAddressUrl,
+  buildArcExplorerTransactionUrl,
+  isHexAddress,
+  isHexTransactionHash
+} from '../support/arc-explorer.js';
 
 type CreateGraphRouterOptions = {
   agentGraphStore: FileAgentGraphStore;
+  runtimeEnv: RuntimeEnv;
 };
 
 const escapeHtml = (value: string): string => {
@@ -14,6 +22,32 @@ const escapeHtml = (value: string): string => {
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;');
+};
+
+const truncateMiddle = (value: string, head = 14, tail = 10): string => {
+  if (value.length <= head + tail + 3) {
+    return value;
+  }
+
+  return `${value.slice(0, head)}...${value.slice(-tail)}`;
+};
+
+const renderEvidenceField = (
+  label: string,
+  value: string,
+  options: {
+    explorerUrl?: string;
+    explorerLabel?: string;
+  } = {}
+): string => {
+  return `
+    <div class="evidence-field">
+      <div class="evidence-label">${escapeHtml(label)}</div>
+      <div class="evidence-value" title="${escapeHtml(value)}">${escapeHtml(truncateMiddle(value))}</div>
+      ${options.explorerUrl ? `<a class="explorer-link" href="${escapeHtml(options.explorerUrl)}" target="_blank" rel="noreferrer">${escapeHtml(options.explorerLabel ?? '浏览器')}</a>` : ''}
+      ${value === 'n/a' ? '' : `<button type="button" class="copy-button" data-copy-value="${escapeHtml(value)}" onclick="copyField(this)">复制</button>`}
+    </div>
+  `;
 };
 
 const renderGraphSvg = (session: AgentSession): string => {
@@ -55,31 +89,41 @@ const renderGraphSvg = (session: AgentSession): string => {
   `;
 };
 
-const renderRunCards = (session: AgentSession): string => {
+const renderRunCards = (session: AgentSession, runtimeEnv: RuntimeEnv): string => {
   return session.runs
     .map(
       (run) => `
         <article class="run-card">
           <h3>${escapeHtml(run.operation)}</h3>
-          <p><strong>requestId</strong>: ${escapeHtml(run.requestId)}</p>
+          ${renderEvidenceField('requestId', run.requestId)}
           <p><strong>price</strong>: ${escapeHtml(run.price)}</p>
-          <p><strong>paymentTransaction</strong>: ${escapeHtml(run.paymentTransaction)}</p>
+          ${renderEvidenceField('paymentTransaction', run.paymentTransaction)}
           <p><strong>paymentAmount</strong>: ${escapeHtml(run.paymentAmount)}</p>
           <p><strong>paymentNetwork</strong>: ${escapeHtml(run.paymentNetwork)}</p>
-          <p><strong>paymentPayer</strong>: ${escapeHtml(run.paymentPayer)}</p>
-          <p><strong>payloadHash</strong>: ${escapeHtml(run.payloadHash)}</p>
-          ${
-            run.receiptTxHash
-              ? `<p><strong>receiptTxHash</strong>: ${escapeHtml(run.receiptTxHash)}</p>`
-              : '<p><strong>receiptTxHash</strong>: n/a</p>'
-          }
+          ${renderEvidenceField('paymentPayer', run.paymentPayer, isHexAddress(run.paymentPayer)
+            ? {
+                explorerUrl: buildArcExplorerAddressUrl(run.paymentPayer, runtimeEnv),
+                explorerLabel: '地址'
+              }
+            : {})}
+          ${renderEvidenceField('payloadHash', run.payloadHash)}
+          ${renderEvidenceField(
+            'receiptTxHash',
+            run.receiptTxHash ?? 'n/a',
+            isHexTransactionHash(run.receiptTxHash)
+              ? {
+                  explorerUrl: buildArcExplorerTransactionUrl(run.receiptTxHash, runtimeEnv),
+                  explorerLabel: '链上交易'
+                }
+              : {}
+          )}
         </article>
       `
     )
     .join('');
 };
 
-const renderGraphPage = (session: AgentSession): string => {
+const renderGraphPage = (session: AgentSession, runtimeEnv: RuntimeEnv): string => {
   return `<!DOCTYPE html>
   <html lang="en">
     <head>
@@ -151,6 +195,63 @@ const renderGraphPage = (session: AgentSession): string => {
           border: 1px solid rgba(148, 163, 184, 0.26);
           border-radius: 18px;
           padding: 16px;
+        }
+
+        .evidence-field {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) auto;
+          gap: 8px;
+          align-items: center;
+          margin-bottom: 10px;
+        }
+
+        .evidence-label {
+          grid-column: 1 / -1;
+          font-size: 12px;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          color: var(--accent);
+        }
+
+        .evidence-value {
+          min-width: 0;
+          padding: 8px 10px;
+          border-radius: 12px;
+          background: rgba(255, 255, 255, 0.96);
+          border: 1px solid rgba(148, 163, 184, 0.18);
+          font-family: "SFMono-Regular", "Menlo", monospace;
+          font-size: 12px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .copy-button {
+          padding: 8px 12px;
+          border-radius: 999px;
+          border: 1px solid rgba(15, 118, 110, 0.22);
+          background: rgba(15, 118, 110, 0.1);
+          color: var(--accent);
+          font-size: 13px;
+          cursor: pointer;
+        }
+
+        .explorer-link {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          padding: 8px 12px;
+          border-radius: 999px;
+          border: 1px solid rgba(15, 118, 110, 0.22);
+          background: rgba(15, 118, 110, 0.08);
+          color: var(--accent);
+          font-size: 13px;
+          text-decoration: none;
+        }
+
+        .copy-button:disabled {
+          opacity: 0.7;
+          cursor: default;
         }
 
         .layout {
@@ -225,9 +326,53 @@ const renderGraphPage = (session: AgentSession): string => {
         <section class="panel" style="margin-top: 20px;">
           <h2>Payment Evidence</h2>
           <div class="run-grid">
-            ${renderRunCards(session)}
+            ${renderRunCards(session, runtimeEnv)}
           </div>
         </section>
+
+        <script>
+          const copyField = async (button) => {
+            const value = button?.dataset?.copyValue;
+
+            if (!value) {
+              return;
+            }
+
+            const previousLabel = button.textContent;
+
+            try {
+              if (navigator.clipboard?.writeText) {
+                await navigator.clipboard.writeText(value);
+              } else {
+                const textarea = document.createElement('textarea');
+                textarea.value = value;
+                textarea.setAttribute('readonly', 'readonly');
+                textarea.style.position = 'absolute';
+                textarea.style.left = '-9999px';
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand('copy');
+                textarea.remove();
+              }
+
+              button.textContent = '已复制';
+              button.disabled = true;
+              window.setTimeout(() => {
+                button.textContent = previousLabel;
+                button.disabled = false;
+              }, 1200);
+            } catch (_error) {
+              button.textContent = '复制失败';
+              button.disabled = true;
+              window.setTimeout(() => {
+                button.textContent = previousLabel;
+                button.disabled = false;
+              }, 1200);
+            }
+          };
+
+          window.copyField = copyField;
+        </script>
       </main>
     </body>
   </html>`;
@@ -244,7 +389,7 @@ export const createGraphRouter = (options: CreateGraphRouterOptions) => {
       return;
     }
 
-    response.status(200).type('html').send(renderGraphPage(session));
+    response.status(200).type('html').send(renderGraphPage(session, options.runtimeEnv));
   });
 
   router.get('/:sessionId', async (request, response) => {
@@ -255,9 +400,8 @@ export const createGraphRouter = (options: CreateGraphRouterOptions) => {
       return;
     }
 
-    response.status(200).type('html').send(renderGraphPage(session));
+    response.status(200).type('html').send(renderGraphPage(session, options.runtimeEnv));
   });
 
   return router;
 };
-

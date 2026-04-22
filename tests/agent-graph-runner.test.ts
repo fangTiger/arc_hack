@@ -196,6 +196,7 @@ describe('runAgentGraphSession', () => {
         port: 3000,
         paymentMode: 'gateway',
         aiMode: 'mock',
+        receiptMode: 'off',
         callLogPath: join(workingDirectory, 'call-log.jsonl'),
         gatewayBuyerBaseUrl: 'http://127.0.0.1:3000',
         gatewayBuyerPrivateKey: '0x1234',

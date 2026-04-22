@@ -3,6 +3,7 @@ import { Router } from 'express';
 import { demoCorpus } from '../demo/corpus.js';
 import { LiveAgentSessionService } from '../demo/live-session.js';
 import type { RuntimeEnv } from '../config/env.js';
+import { getArcExplorerBaseUrl } from '../support/arc-explorer.js';
 
 type CreateLiveRouterOptions = {
   liveSessionService: LiveAgentSessionService;
@@ -267,6 +268,71 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           font-size: 13px;
         }
 
+        .evidence-list {
+          display: grid;
+          gap: 12px;
+        }
+
+        .evidence-item {
+          border-radius: 18px;
+          border: 1px solid rgba(148, 163, 184, 0.18);
+          background: rgba(248, 250, 252, 0.88);
+          padding: 14px;
+        }
+
+        .evidence-item h3 {
+          margin: 0 0 12px;
+          font-size: 16px;
+          text-transform: capitalize;
+        }
+
+        .evidence-field {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) auto;
+          gap: 8px;
+          align-items: center;
+          margin-bottom: 8px;
+        }
+
+        .evidence-field:last-child {
+          margin-bottom: 0;
+        }
+
+        .evidence-label {
+          grid-column: 1 / -1;
+          font-size: 12px;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          color: var(--gold);
+        }
+
+        .evidence-value {
+          min-width: 0;
+          padding: 8px 10px;
+          border-radius: 12px;
+          background: rgba(255, 255, 255, 0.96);
+          border: 1px solid rgba(148, 163, 184, 0.18);
+          font-family: "SFMono-Regular", "Menlo", monospace;
+          font-size: 12px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .copy-button {
+          padding: 8px 12px;
+          border-radius: 999px;
+          border: 1px solid rgba(15, 118, 110, 0.22);
+          background: rgba(15, 118, 110, 0.1);
+          color: var(--accent);
+          font-size: 13px;
+        }
+
+        .copy-button:disabled {
+          opacity: 0.7;
+          cursor: default;
+        }
+
         @media (max-width: 940px) {
           .layout {
             grid-template-columns: 1fr;
@@ -282,7 +348,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
       <main>
         <section class="hero">
           <div class="eyebrow"><span>Live Agent Console</span><span>Mode ${escapeHtml(runtimeEnv.paymentMode)}</span></div>
-          <h1>把 agent 运行过程直接录进同一块屏幕</h1>
+          <h1>知识图谱 Live Console</h1>
           <p>输入一段文本，点击开始，在页面里按阶段查看 summary、entities、relations、graph 和 payment evidence。当前服务端模式为 <strong>${escapeHtml(runtimeEnv.paymentMode)}</strong>。</p>
         </section>
 
@@ -331,7 +397,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
               </article>
               <article class="evidence-card">
                 <div class="stage-label">Evidence</div>
-                <pre id="evidence-preview" class="muted">尚无支付证据</pre>
+                <div id="evidence-preview" class="evidence-list muted">尚无支付证据</div>
               </article>
             </section>
 
@@ -361,6 +427,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
         const summaryPreview = document.getElementById('summary-preview');
         const evidencePreview = document.getElementById('evidence-preview');
         const graphPreview = document.getElementById('graph-preview');
+        const explorerBaseUrl = ${JSON.stringify(getArcExplorerBaseUrl(runtimeEnv))};
         const formMessage = document.getElementById('form-message');
         const titleInput = document.getElementById('title-input');
         const sourceTypeInput = document.getElementById('source-type-input');
@@ -379,6 +446,77 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           .replaceAll('>', '&gt;')
           .replaceAll('"', '&quot;')
           .replaceAll("'", '&#39;');
+
+        const truncateMiddle = (value, head = 14, tail = 10) => {
+          const text = String(value ?? '');
+          if (text.length <= head + tail + 3) {
+            return text;
+          }
+
+          return text.slice(0, head) + '...' + text.slice(-tail);
+        };
+
+        const isHexAddress = (value) => /^0x[a-fA-F0-9]{40}$/.test(String(value ?? ''));
+        const isHexTransactionHash = (value) => /^0x[a-fA-F0-9]{64}$/.test(String(value ?? ''));
+
+        const copyField = async (button) => {
+          const value = button?.dataset?.copyValue;
+
+          if (!value) {
+            return;
+          }
+
+          const previousLabel = button.textContent;
+
+          try {
+            if (navigator.clipboard?.writeText) {
+              await navigator.clipboard.writeText(value);
+            } else {
+              const textarea = document.createElement('textarea');
+              textarea.value = value;
+              textarea.setAttribute('readonly', 'readonly');
+              textarea.style.position = 'absolute';
+              textarea.style.left = '-9999px';
+              document.body.appendChild(textarea);
+              textarea.select();
+              document.execCommand('copy');
+              textarea.remove();
+            }
+
+            button.textContent = '已复制';
+            button.disabled = true;
+            window.setTimeout(() => {
+              button.textContent = previousLabel;
+              button.disabled = false;
+            }, 1200);
+          } catch (_error) {
+            button.textContent = '复制失败';
+            button.disabled = true;
+            window.setTimeout(() => {
+              button.textContent = previousLabel;
+              button.disabled = false;
+            }, 1200);
+          }
+        };
+
+        const renderCopyableField = (label, value, options = {}) => {
+          const normalizedValue = value ?? 'n/a';
+          const copyButton = normalizedValue === 'n/a'
+            ? ''
+            : \`<button type="button" class="copy-button" data-copy-value="\${escapeText(normalizedValue)}" onclick="copyField(this)">复制</button>\`;
+          const explorerButton = options.explorerUrl
+            ? \`<a class="copy-button" href="\${escapeText(options.explorerUrl)}" target="_blank" rel="noreferrer">\${escapeText(options.explorerLabel ?? '浏览器')}</a>\`
+            : '';
+
+          return \`
+            <div class="evidence-field">
+              <div class="evidence-label">\${escapeText(label)}</div>
+              <div class="evidence-value" title="\${escapeText(normalizedValue)}">\${escapeText(truncateMiddle(normalizedValue))}</div>
+              \${explorerButton}
+              \${copyButton}
+            </div>
+          \`;
+        };
 
         const getStep = (session, key) => session?.steps?.find((step) => step.key === key);
 
@@ -456,14 +594,34 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
 
           summaryPreview.textContent = session.preview?.summary ?? '摘要生成中';
           const runs = session.agentSession?.runs ?? [];
-          evidencePreview.textContent = runs.length > 0
-            ? runs.map((run) => [
-                run.operation,
-                'requestId=' + run.requestId,
-                'price=' + run.price,
-                'paymentTransaction=' + run.paymentTransaction,
-                'receiptTxHash=' + (run.receiptTxHash ?? 'n/a')
-              ].join(' | ')).join('\\n')
+          evidencePreview.innerHTML = runs.length > 0
+            ? runs.map((run) => \`
+                <article class="evidence-item">
+                  <h3>\${escapeText(run.operation)}</h3>
+                  \${renderCopyableField('requestId', run.requestId)}
+                  \${renderCopyableField('paymentTransaction', run.paymentTransaction)}
+                  \${renderCopyableField(
+                    'paymentPayer',
+                    run.paymentPayer,
+                    isHexAddress(run.paymentPayer)
+                      ? {
+                          explorerUrl: explorerBaseUrl + '/address/' + run.paymentPayer,
+                          explorerLabel: '地址'
+                        }
+                      : {}
+                  )}
+                  \${renderCopyableField(
+                    'receiptTxHash',
+                    run.receiptTxHash ?? 'n/a',
+                    isHexTransactionHash(run.receiptTxHash)
+                      ? {
+                          explorerUrl: explorerBaseUrl + '/tx/' + run.receiptTxHash,
+                          explorerLabel: '链上交易'
+                        }
+                      : {}
+                  )}
+                </article>
+              \`).join('')
             : '尚无支付证据';
           renderGraph(session);
         };
@@ -606,6 +764,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           }
         };
 
+        window.copyField = copyField;
         void bootstrap();
       </script>
     </body>

@@ -12,6 +12,14 @@ type RealKnowledgeExtractionProviderOptions = {
   fetchImplementation?: typeof fetch;
 };
 
+const normalizeBaseUrl = (baseUrl: string): string => {
+  const normalized = baseUrl.replace(/\/$/, '');
+
+  return normalized.endsWith('/chat/completions')
+    ? normalized.slice(0, -'/chat/completions'.length)
+    : normalized;
+};
+
 const buildOperationInstruction = (operation: ExtractionOperation): string => {
   if (operation === 'summary') {
     return '请输出 JSON：{"kind":"summary","summary":"..."}，只保留简洁摘要。';
@@ -31,7 +39,7 @@ export class RealKnowledgeExtractionProvider implements KnowledgeExtractionProvi
   private readonly fetchImplementation: typeof fetch;
 
   constructor(options: RealKnowledgeExtractionProviderOptions) {
-    this.baseUrl = options.baseUrl.replace(/\/$/, '');
+    this.baseUrl = normalizeBaseUrl(options.baseUrl);
     this.model = options.model;
     this.apiKey = options.apiKey;
     this.fetchImplementation = options.fetchImplementation ?? fetch;
@@ -69,7 +77,14 @@ export class RealKnowledgeExtractionProvider implements KnowledgeExtractionProvi
     });
 
     if (!response.ok) {
-      throw new Error(`Real knowledge extraction provider request failed with status ${response.status}.`);
+      const errorText = await response.text();
+      const details = errorText.trim().slice(0, 500);
+
+      throw new Error(
+        details
+          ? `Real knowledge extraction provider request failed with status ${response.status}. Upstream: ${details}`
+          : `Real knowledge extraction provider request failed with status ${response.status}.`
+      );
     }
 
     const payload = (await response.json()) as {
