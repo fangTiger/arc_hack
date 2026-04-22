@@ -1,20 +1,56 @@
 import { Router } from 'express';
 
+import type { RuntimeEnv } from '../config/env.js';
 import { demoCorpus } from '../demo/corpus.js';
 import { LiveAgentSessionService } from '../demo/live-session.js';
-import type { RuntimeEnv } from '../config/env.js';
+import { liveNewsPresets } from '../demo/news-presets.js';
+import type { SourceImportMode, SourceMetadata, SourceType } from '../domain/extraction/types.js';
+import {
+  SUPPORTED_NEWS_SOURCE_LABELS,
+  type ImportedArticle,
+  type SupportedNewsSite
+} from '../domain/news-import/index.js';
 import { getArcExplorerBaseUrl } from '../support/arc-explorer.js';
+
+type NewsImporter = {
+  import: (articleUrl: string) => Promise<ImportedArticle>;
+};
 
 type CreateLiveRouterOptions = {
   liveSessionService: LiveAgentSessionService;
   runtimeEnv: RuntimeEnv;
+  newsImporter: NewsImporter;
 };
 
 type CreateSessionBody = {
-  title?: string;
-  text?: string;
-  sourceType?: string;
+  title?: unknown;
+  text?: unknown;
+  sourceType?: unknown;
+  articleUrl?: unknown;
+  metadata?: unknown;
 };
+
+type ParsedCreateSessionBody =
+  | {
+      kind: 'text';
+      input: {
+        title?: string;
+        text: string;
+        sourceType?: SourceType;
+        metadata?: SourceMetadata;
+      };
+    }
+  | {
+      kind: 'link';
+      articleUrl: string;
+    }
+  | {
+      kind: 'invalid';
+      message: string;
+    };
+
+const SUPPORTED_SOURCE_SITE_VALUES = new Set<SupportedNewsSite>(['wublock123', 'panews', 'chaincatcher']);
+const SUPPORTED_IMPORT_MODES = new Set<SourceImportMode>(['manual', 'link', 'preset']);
 
 const escapeHtml = (value: string): string => {
   return value
@@ -25,14 +61,177 @@ const escapeHtml = (value: string): string => {
     .replaceAll("'", '&#39;');
 };
 
-const isValidSourceType = (value: string | undefined): value is 'news' | 'research' =>
+const trimToUndefined = (value: unknown): string | undefined => {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  return trimmed ? trimmed : undefined;
+};
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const isValidSourceType = (value: unknown): value is SourceType =>
   value === undefined || value === 'news' || value === 'research';
 
-const isValidCreateSessionBody = (body: CreateSessionBody): body is Required<Pick<CreateSessionBody, 'text'>> & CreateSessionBody =>
-  typeof body.text === 'string' && body.text.trim().length > 0;
+const isValidHttpUrl = (value: string): boolean => {
+  try {
+    const parsedUrl = new URL(value);
+    return parsedUrl.protocol === 'http:' || parsedUrl.protocol === 'https:';
+  } catch {
+    return false;
+  }
+};
+
+const normalizeMetadata = (
+  metadata: unknown
+):
+  | {
+      ok: true;
+      metadata?: SourceMetadata;
+    }
+  | {
+      ok: false;
+      message: string;
+    } => {
+  if (metadata === undefined) {
+    return {
+      ok: true,
+      metadata: undefined
+    };
+  }
+
+  if (!isPlainObject(metadata)) {
+    return {
+      ok: false,
+      message: 'metadata 必须是对象。'
+    };
+  }
+
+  const articleUrl = trimToUndefined(metadata.articleUrl);
+  const sourceSite = trimToUndefined(metadata.sourceSite);
+  const importMode = trimToUndefined(metadata.importMode);
+
+  if (articleUrl && !isValidHttpUrl(articleUrl)) {
+    return {
+      ok: false,
+      message: 'metadata.articleUrl 必须是合法的 http/https URL。'
+    };
+  }
+
+  if (sourceSite && !SUPPORTED_SOURCE_SITE_VALUES.has(sourceSite as SupportedNewsSite)) {
+    return {
+      ok: false,
+      message: `metadata.sourceSite 仅支持 ${Object.values(SUPPORTED_NEWS_SOURCE_LABELS).join('、')}。`
+    };
+  }
+
+  if (importMode && !SUPPORTED_IMPORT_MODES.has(importMode as SourceImportMode)) {
+    return {
+      ok: false,
+      message: 'metadata.importMode 仅支持 manual、link、preset。'
+    };
+  }
+
+  const normalizedMetadata: SourceMetadata = {
+    ...(articleUrl ? { articleUrl } : {}),
+    ...(sourceSite ? { sourceSite: sourceSite as SupportedNewsSite } : {}),
+    ...(importMode ? { importMode: importMode as SourceImportMode } : {})
+  };
+
+  return {
+    ok: true,
+    metadata: Object.keys(normalizedMetadata).length > 0 ? normalizedMetadata : undefined
+  };
+};
+
+const parseCreateSessionBody = (body: CreateSessionBody): ParsedCreateSessionBody => {
+  const text = trimToUndefined(body.text);
+  const articleUrl = trimToUndefined(body.articleUrl);
+
+  if (text && articleUrl) {
+    return {
+      kind: 'invalid',
+      message: 'text 与 articleUrl 不能同时提交。'
+    };
+  }
+
+  if (!text && !articleUrl) {
+    return {
+      kind: 'invalid',
+      message: '必须提供 text 或 articleUrl 其中之一。'
+    };
+  }
+
+  if (!isValidSourceType(body.sourceType)) {
+    return {
+      kind: 'invalid',
+      message: 'sourceType 仅支持 news 或 research。'
+    };
+  }
+
+  const normalizedMetadata = normalizeMetadata(body.metadata);
+
+  if (!normalizedMetadata.ok) {
+    return {
+      kind: 'invalid',
+      message: normalizedMetadata.message
+    };
+  }
+
+  if (articleUrl) {
+    if (!isValidHttpUrl(articleUrl)) {
+      return {
+        kind: 'invalid',
+        message: 'articleUrl 必须是合法的 http/https URL。'
+      };
+    }
+
+    return {
+      kind: 'link',
+      articleUrl
+    };
+  }
+
+  return {
+    kind: 'text',
+    input: {
+      ...(trimToUndefined(body.title) ? { title: trimToUndefined(body.title) } : {}),
+      text: text!,
+      ...(body.sourceType ? { sourceType: body.sourceType as SourceType } : {}),
+      ...(normalizedMetadata.metadata ? { metadata: normalizedMetadata.metadata } : {})
+    }
+  };
+};
+
+const extractErrorMessage = (error: unknown): string => {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return '新闻导入失败。';
+};
 
 const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
   const sample = demoCorpus[0];
+  const presetCards = liveNewsPresets
+    .map(
+      (preset) => `
+        <article class="preset-card" data-preset-id="${escapeHtml(preset.id)}">
+          <div class="preset-meta">
+            <span>${escapeHtml(SUPPORTED_NEWS_SOURCE_LABELS[preset.sourceSite])}</span>
+            <span>${escapeHtml(new URL(preset.articleUrl).hostname)}</span>
+          </div>
+          <h3>${escapeHtml(preset.title)}</h3>
+          <p class="preset-excerpt">${escapeHtml(preset.excerpt)}</p>
+          <p class="preset-snippet">${escapeHtml(preset.text.split('\n\n')[0])}</p>
+          <button type="button" class="secondary preset-launch-button" data-preset-id="${escapeHtml(preset.id)}">使用本地缓存</button>
+        </article>
+      `
+    )
+    .join('');
 
   return `<!DOCTYPE html>
   <html lang="zh-CN">
@@ -120,6 +319,15 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           gap: 14px;
         }
 
+        .section-heading {
+          display: grid;
+          gap: 4px;
+        }
+
+        .section-heading h3 {
+          margin: 0;
+        }
+
         label {
           display: grid;
           gap: 8px;
@@ -173,6 +381,59 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
         .secondary {
           background: var(--accent-soft);
           color: var(--accent);
+        }
+
+        .mode-note {
+          margin: -4px 0 0;
+          color: var(--muted);
+          font-size: 13px;
+          line-height: 1.5;
+        }
+
+        .preset-grid {
+          display: grid;
+          gap: 12px;
+          margin-top: 6px;
+        }
+
+        .preset-card {
+          border-radius: 22px;
+          border: 1px solid rgba(148, 163, 184, 0.22);
+          background: rgba(255, 255, 255, 0.82);
+          padding: 16px;
+          display: grid;
+          gap: 10px;
+        }
+
+        .preset-card h3 {
+          margin: 0;
+          font-size: 18px;
+        }
+
+        .preset-meta {
+          display: flex;
+          justify-content: space-between;
+          gap: 12px;
+          flex-wrap: wrap;
+          font-size: 12px;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          color: var(--gold);
+        }
+
+        .preset-excerpt,
+        .preset-snippet {
+          margin: 0;
+          color: var(--muted);
+          line-height: 1.6;
+        }
+
+        .preset-snippet {
+          font-size: 14px;
+        }
+
+        .hidden {
+          display: none !important;
         }
 
         .status-chip {
@@ -349,7 +610,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
         <section class="hero">
           <div class="eyebrow"><span>Live Agent Console</span><span>Mode ${escapeHtml(runtimeEnv.paymentMode)}</span></div>
           <h1>知识图谱 Live Console</h1>
-          <p>输入一段文本，点击开始，在页面里按阶段查看 summary、entities、relations、graph 和 payment evidence。当前服务端模式为 <strong>${escapeHtml(runtimeEnv.paymentMode)}</strong>。</p>
+          <p>支持两种输入模式：文章链接 或 手动文本。链接模式会先导入白名单新闻源，预置新闻卡片则直接使用本地缓存结果，不依赖实时抓远端网页。当前服务端模式为 <strong>${escapeHtml(runtimeEnv.paymentMode)}</strong>。</p>
         </section>
 
         <section class="layout">
@@ -357,25 +618,50 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
             <h2>输入区</h2>
             <div class="input-grid">
               <label>
-                标题
-                <input id="title-input" value="${escapeHtml(sample.title ?? '')}" />
-              </label>
-              <label>
-                Source Type
-                <select id="source-type-input">
-                  <option value="news"${sample.sourceType === 'news' ? ' selected' : ''}>news</option>
-                  <option value="research"${sample.sourceType === 'research' ? ' selected' : ''}>research</option>
+                输入模式
+                <select id="input-mode-input">
+                  <option value="link" selected>文章链接</option>
+                  <option value="manual">手动文本</option>
                 </select>
               </label>
-              <label>
-                文本
-                <textarea id="text-input">${escapeHtml(sample.text)}</textarea>
+              <p class="mode-note">支持站点：${escapeHtml(Object.values(SUPPORTED_NEWS_SOURCE_LABELS).join(' / '))}。链接模式会提交到 /demo/live/session 并先执行导入。</p>
+
+              <label id="article-url-field">
+                文章链接
+                <input id="article-url-input" placeholder="https://wublock123.com/p/654321" />
               </label>
+
+              <div id="manual-fields" class="hidden">
+                <div class="input-grid">
+                  <label>
+                    标题
+                    <input id="title-input" value="${escapeHtml(sample.title ?? '')}" />
+                  </label>
+                  <label>
+                    Source Type
+                    <select id="source-type-input">
+                      <option value="news"${sample.sourceType === 'news' ? ' selected' : ''}>news</option>
+                      <option value="research"${sample.sourceType === 'research' ? ' selected' : ''}>research</option>
+                    </select>
+                  </label>
+                  <label>
+                    文本
+                    <textarea id="text-input">${escapeHtml(sample.text)}</textarea>
+                  </label>
+                </div>
+              </div>
+
               <div class="button-row">
                 <button id="start-button" class="primary" type="button">开始演示</button>
                 <button id="fill-sample-button" class="secondary" type="button">填充示例</button>
               </div>
               <p id="form-message" class="muted">页面加载后会尝试恢复最近一次 live session。</p>
+
+              <section class="section-heading">
+                <h3>预置新闻卡片</h3>
+                <p class="muted">卡片里内置了缓存导入结果，点击后会直接以 text + metadata.importMode="preset" 创建 live session。</p>
+              </section>
+              <section class="preset-grid">${presetCards}</section>
             </div>
           </article>
 
@@ -410,6 +696,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
 
       <script>
         const sample = ${JSON.stringify(sample)};
+        const presets = ${JSON.stringify(liveNewsPresets)};
         const state = {
           pollingTimer: null,
           sessionId: null
@@ -429,11 +716,16 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
         const graphPreview = document.getElementById('graph-preview');
         const explorerBaseUrl = ${JSON.stringify(getArcExplorerBaseUrl(runtimeEnv))};
         const formMessage = document.getElementById('form-message');
+        const inputModeInput = document.getElementById('input-mode-input');
+        const articleUrlField = document.getElementById('article-url-field');
+        const articleUrlInput = document.getElementById('article-url-input');
+        const manualFields = document.getElementById('manual-fields');
         const titleInput = document.getElementById('title-input');
         const sourceTypeInput = document.getElementById('source-type-input');
         const textInput = document.getElementById('text-input');
         const startButton = document.getElementById('start-button');
         const fillSampleButton = document.getElementById('fill-sample-button');
+        const presetButtons = document.querySelectorAll('.preset-launch-button');
 
         const statusText = (status) => {
           if (!status) return 'pending';
@@ -458,6 +750,12 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
 
         const isHexAddress = (value) => /^0x[a-fA-F0-9]{40}$/.test(String(value ?? ''));
         const isHexTransactionHash = (value) => /^0x[a-fA-F0-9]{64}$/.test(String(value ?? ''));
+
+        const applyInputMode = (mode) => {
+          const useLinkMode = mode === 'link';
+          articleUrlField.classList.toggle('hidden', !useLinkMode);
+          manualFields.classList.toggle('hidden', useLinkMode);
+        };
 
         const copyField = async (button) => {
           const value = button?.dataset?.copyValue;
@@ -652,7 +950,10 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
         const updateView = (session) => {
           if (session?.sessionId) {
             state.sessionId = session.sessionId;
-            formMessage.textContent = '当前 sessionId: ' + session.sessionId;
+            const importMode = session.source?.metadata?.importMode;
+            formMessage.textContent = importMode
+              ? '当前 sessionId: ' + session.sessionId + ' · importMode=' + importMode
+              : '当前 sessionId: ' + session.sessionId;
           }
 
           setOverallStatus(session);
@@ -677,7 +978,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           const payload = await response.json();
 
           if (!response.ok) {
-            throw Object.assign(new Error(payload.error ?? 'Request failed.'), {
+            throw Object.assign(new Error(payload.message ?? payload.error ?? 'Request failed.'), {
               payload,
               status: response.status
             });
@@ -709,7 +1010,33 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           }, 1000);
         };
 
+        const createSession = async (payload) => {
+          formMessage.textContent = '正在创建 live session...';
+          formMessage.className = 'muted';
+
+          try {
+            const responsePayload = await fetchJson('/demo/live/session', {
+              method: 'POST',
+              body: JSON.stringify(payload)
+            });
+
+            if (!responsePayload) {
+              return;
+            }
+
+            startPolling(responsePayload.sessionId);
+          } catch (error) {
+            const message = error?.payload?.sessionId
+              ? error.message + ' sessionId=' + error.payload.sessionId
+              : error.message;
+            formMessage.textContent = message;
+            formMessage.className = 'error';
+          }
+        };
+
         fillSampleButton.addEventListener('click', () => {
+          inputModeInput.value = 'manual';
+          applyInputMode('manual');
           titleInput.value = sample.title ?? '';
           sourceTypeInput.value = sample.sourceType;
           textInput.value = sample.text;
@@ -718,34 +1045,48 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
         });
 
         startButton.addEventListener('click', async () => {
-          formMessage.textContent = '正在创建 live session...';
-          formMessage.className = 'muted';
-
-          try {
-            const payload = await fetchJson('/demo/live/session', {
-              method: 'POST',
-              body: JSON.stringify({
+          const mode = inputModeInput.value;
+          const payload = mode === 'link'
+            ? {
+                articleUrl: articleUrlInput.value
+              }
+            : {
                 title: titleInput.value,
                 text: textInput.value,
-                sourceType: sourceTypeInput.value
-              })
-            });
+                sourceType: sourceTypeInput.value,
+                metadata: {
+                  importMode: 'manual'
+                }
+              };
 
-            if (!payload) {
+          await createSession(payload);
+        });
+
+        inputModeInput.addEventListener('change', () => {
+          applyInputMode(inputModeInput.value);
+        });
+
+        for (const button of presetButtons) {
+          button.addEventListener('click', async () => {
+            const presetId = button.dataset.presetId;
+            const preset = presets.find((entry) => entry.id === presetId);
+
+            if (!preset) {
               return;
             }
 
-            startPolling(payload.sessionId);
-          } catch (error) {
-            const message = error?.payload?.sessionId
-              ? error.message + ' sessionId=' + error.payload.sessionId
-              : error.message;
-            formMessage.textContent = message;
-            formMessage.className = 'error';
-          }
-        });
+            inputModeInput.value = 'manual';
+            applyInputMode('manual');
+            articleUrlInput.value = preset.articleUrl;
+            titleInput.value = preset.request.title ?? '';
+            sourceTypeInput.value = preset.request.sourceType;
+            textInput.value = preset.request.text;
+            await createSession(preset.request);
+          });
+        }
 
         const bootstrap = async () => {
+          applyInputMode(inputModeInput.value);
           renderStages(null);
 
           try {
@@ -779,18 +1120,47 @@ export const createLiveRouter = (options: CreateLiveRouterOptions) => {
   });
 
   router.post('/session', async (request, response) => {
-    const body = (request.body ?? {}) as CreateSessionBody;
+    const parsedBody = parseCreateSessionBody((request.body ?? {}) as CreateSessionBody);
 
-    if (!isValidCreateSessionBody(body) || !isValidSourceType(body.sourceType)) {
-      response.status(400).json({ error: 'invalid_live_session_input' });
+    if (parsedBody.kind === 'invalid') {
+      response.status(400).json({
+        error: 'invalid_live_session_input',
+        message: parsedBody.message
+      });
       return;
     }
 
-    const result = await options.liveSessionService.startSession({
-      title: body.title,
-      text: body.text,
-      sourceType: body.sourceType
-    });
+    const sessionInput =
+      parsedBody.kind === 'link'
+        ? await (async () => {
+            try {
+              const importedArticle = await options.newsImporter.import(parsedBody.articleUrl);
+
+              return {
+                title: importedArticle.title,
+                text: importedArticle.text,
+                sourceType: importedArticle.sourceType,
+                metadata: {
+                  articleUrl: importedArticle.sourceUrl,
+                  sourceSite: importedArticle.sourceSite,
+                  importMode: 'link'
+                } satisfies SourceMetadata
+              };
+            } catch (error) {
+              response.status(400).json({
+                error: 'news_import_failed',
+                message: extractErrorMessage(error)
+              });
+              return null;
+            }
+          })()
+        : parsedBody.input;
+
+    if (!sessionInput) {
+      return;
+    }
+
+    const result = await options.liveSessionService.startSession(sessionInput);
 
     if (result.kind === 'conflict') {
       response.status(409).json({

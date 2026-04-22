@@ -123,6 +123,46 @@ const renderRunCards = (session: AgentSession, runtimeEnv: RuntimeEnv): string =
     .join('');
 };
 
+const formatImportMode = (importMode: string): string => {
+  switch (importMode) {
+    case 'manual':
+      return '手动文本 (manual)';
+    case 'link':
+      return '文章链接 (link)';
+    case 'preset':
+      return '预置卡片 (preset)';
+    default:
+      return importMode;
+  }
+};
+
+const renderSourceMetadata = (session: AgentSession): string => {
+  const metadata = session.source.metadata;
+
+  if (!metadata) {
+    return `
+      <div class="meta-card source-card">
+        <strong>导入来源</strong>
+        <p>未记录导入来源</p>
+        <p class="summary">这个 session 来自旧版本产物，source metadata 不存在时页面会保持兼容展示。</p>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="meta-card source-card">
+      <strong>导入来源</strong>
+      ${renderEvidenceField('articleUrl', metadata.articleUrl ?? 'n/a', metadata.articleUrl ? {
+        explorerUrl: metadata.articleUrl,
+        explorerLabel: '原文'
+      } : {})}
+      ${renderEvidenceField('sourceSite', metadata.sourceSite ?? 'n/a')}
+      ${renderEvidenceField('importMode', metadata.importMode ? formatImportMode(metadata.importMode) : 'n/a')}
+      ${renderEvidenceField('title', session.source.title ?? 'n/a')}
+    </div>
+  `;
+};
+
 const renderGraphPage = (session: AgentSession, runtimeEnv: RuntimeEnv): string => {
   return `<!DOCTYPE html>
   <html lang="en">
@@ -195,6 +235,11 @@ const renderGraphPage = (session: AgentSession, runtimeEnv: RuntimeEnv): string 
           border: 1px solid rgba(148, 163, 184, 0.26);
           border-radius: 18px;
           padding: 16px;
+        }
+
+        .source-card {
+          display: grid;
+          gap: 10px;
         }
 
         .evidence-field {
@@ -302,6 +347,7 @@ const renderGraphPage = (session: AgentSession, runtimeEnv: RuntimeEnv): string 
               <strong>Source Type</strong>
               <p>${escapeHtml(session.source.sourceType)}</p>
             </div>
+            ${renderSourceMetadata(session)}
           </div>
         </section>
 
@@ -312,6 +358,10 @@ const renderGraphPage = (session: AgentSession, runtimeEnv: RuntimeEnv): string 
           </article>
 
           <article class="panel">
+            <h2>导入来源</h2>
+            <p class="summary">${session.source.metadata
+              ? escapeHtml(`导入方式：${formatImportMode(session.source.metadata.importMode ?? 'unknown')}`)
+              : '未记录导入来源。'}</p>
             <h2>Relations</h2>
             <ul>
               ${session.relations
