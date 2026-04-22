@@ -3,7 +3,7 @@ import { mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { createApp } from '../src/app.js';
-import { loadRuntimeEnv, type PaymentMode } from '../src/config/env.js';
+import { getRuntimeEnv, loadRuntimeEnv, type PaymentMode, type RuntimeEnv } from '../src/config/env.js';
 import { demoCorpus } from '../src/demo/corpus.js';
 import type { ExtractionOperation, ExtractionRequest, ExtractionResult } from '../src/domain/extraction/types.js';
 import { createReceiptWriter, type ReceiptWriter } from '../src/domain/receipt/writer.js';
@@ -16,6 +16,7 @@ export type DemoRunOptions = {
   operations?: ExtractionOperation[];
   repeatCount?: number;
   paymentMode?: PaymentMode;
+  runtimeEnv?: RuntimeEnv;
   receiptWriter?: ReceiptWriter;
   resetArtifacts?: boolean;
 };
@@ -53,10 +54,10 @@ export const runDemo = async (options: DemoRunOptions): Promise<DemoRunSummary> 
   const corpus = options.corpus ?? demoCorpus;
   const operations = options.operations ?? ['summary', 'entities', 'relations'];
   const repeatCount = options.repeatCount ?? 1;
-  const paymentMode = options.paymentMode ?? process.env.PAYMENT_MODE ?? 'mock';
   const callLogPath = join(options.artifactDirectory, 'call-log.jsonl');
   const summaryPath = join(options.artifactDirectory, 'summary.json');
   const store = new FileCallLogStore(callLogPath);
+  const paymentMode = options.paymentMode ?? options.runtimeEnv?.paymentMode ?? 'mock';
 
   if (paymentMode === 'gateway') {
     throw new Error('runDemo only supports mock payment mode. Use npm run dev for gateway seller mode.');
@@ -68,16 +69,23 @@ export const runDemo = async (options: DemoRunOptions): Promise<DemoRunSummary> 
 
   await mkdir(options.artifactDirectory, { recursive: true });
 
+  const runtimeEnv =
+    options.runtimeEnv !== undefined
+      ? {
+          ...options.runtimeEnv,
+          paymentMode,
+          callLogPath
+        }
+      : loadRuntimeEnv({
+          NODE_ENV: 'test',
+          PORT: '3000',
+          PAYMENT_MODE: paymentMode,
+          AI_MODE: 'mock',
+          CALL_LOG_PATH: callLogPath
+        });
   let requestCounter = 0;
   const app = createApp({
-    runtimeEnv: loadRuntimeEnv({
-      ...process.env,
-      NODE_ENV: 'test',
-      PORT: '3000',
-      PAYMENT_MODE: paymentMode,
-      AI_MODE: process.env.AI_MODE ?? 'mock',
-      CALL_LOG_PATH: callLogPath
-    }),
+    runtimeEnv,
     requestIdFactory: () => `demo-${String(++requestCounter).padStart(3, '0')}`
   });
   let requestSeedCounter = 0;
@@ -205,6 +213,7 @@ export const parseReceiptWriterFromEnv = (): ReceiptWriter | undefined => {
 };
 
 if (import.meta.url === `file://${process.argv[1]}`) {
+  const runtimeEnv = getRuntimeEnv();
   const receiptWriter = parseReceiptWriterFromEnv();
   const artifactDirectory =
     process.env.DEMO_ARTIFACT_DIR ??
@@ -213,6 +222,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     artifactDirectory,
     operations: parseOperations(process.env.DEMO_OPERATIONS),
     repeatCount: parseRepeatCount(process.env.DEMO_REPEAT_COUNT),
+    runtimeEnv,
     receiptWriter
   });
   console.log(JSON.stringify(summary, null, 2));

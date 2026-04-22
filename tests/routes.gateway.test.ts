@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const gatewayHarness = vi.hoisted(() => {
   type GatewayMiddlewareConfig = {
@@ -136,13 +136,18 @@ afterEach(() => {
   }
 });
 
+beforeEach(() => {
+  gatewayHarness.state.configs.length = 0;
+  gatewayHarness.state.requiredPrices.length = 0;
+  gatewayHarness.state.paidRequests.length = 0;
+});
+
 const createTestApp = (overrides?: Partial<Record<string, string>>) => {
   const workingDirectory = mkdtempSync(join(tmpdir(), 'arc-hack-gateway-'));
   const callLogPath = join(workingDirectory, 'call-log.jsonl');
   temporaryDirectories.push(workingDirectory);
 
   const runtimeEnv = loadRuntimeEnv({
-    ...process.env,
     NODE_ENV: 'test',
     PORT: '3000',
     PAYMENT_MODE: 'gateway',

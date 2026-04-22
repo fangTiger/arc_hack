@@ -36,6 +36,7 @@ describe('runDemo with receipt mode', () => {
         artifactDirectory,
         operations: ['summary'],
         corpus: demoCorpus.slice(0, 1),
+        paymentMode: 'mock',
         receiptWriter: createReceiptWriter({ mode: 'mock' })
       });
       const store = new FileCallLogStore(join(artifactDirectory, 'call-log.jsonl'));

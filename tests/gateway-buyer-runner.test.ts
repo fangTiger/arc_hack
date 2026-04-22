@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -162,6 +163,34 @@ describe('runGatewayBuyerDemo', () => {
       expect(summary.requestIds).toEqual(['gateway-001', 'gateway-002']);
       expect(summary.paymentTransactions).toEqual(['0xsettlement-1', '0xsettlement-2']);
       expect(summary.receiptTxHashes).toHaveLength(2);
+      expect(summary.runs[0]?.receiptTxHash).toBe(summary.receiptTxHashes?.[0]);
+      expect(summary.runs[1]?.receiptTxHash).toBe(summary.receiptTxHashes?.[1]);
+      expect(summary.runs).toEqual([
+        {
+          requestId: 'gateway-001',
+          operation: 'summary',
+          price: '$0.004',
+          resultKind: 'summary',
+          paymentTransaction: '0xsettlement-1',
+          paymentAmount: '4000',
+          paymentNetwork: 'eip155:5042002',
+          paymentPayer: '0xbuyer',
+          payloadHash: `0x${createHash('sha256').update(JSON.stringify({ kind: 'summary', summary: 'Arc and Circle' })).digest('hex')}`,
+          receiptTxHash: summary.receiptTxHashes?.[0]
+        },
+        {
+          requestId: 'gateway-002',
+          operation: 'summary',
+          price: '$0.004',
+          resultKind: 'summary',
+          paymentTransaction: '0xsettlement-2',
+          paymentAmount: '4000',
+          paymentNetwork: 'eip155:5042002',
+          paymentPayer: '0xbuyer',
+          payloadHash: `0x${createHash('sha256').update(JSON.stringify({ kind: 'summary', summary: 'Arc and Circle' })).digest('hex')}`,
+          receiptTxHash: summary.receiptTxHashes?.[1]
+        }
+      ]);
       expect(summary.balances.before.gateway.available).toBe('0.012000');
       expect(summary.balances.after.gateway.available).toBe('0.004000');
       expect(summary.stats.totalCalls).toBe(2);

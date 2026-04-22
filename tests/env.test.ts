@@ -1,11 +1,27 @@
 import { join } from 'node:path';
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { loadRuntimeEnv } from '../src/config/env.js';
+const importEnvModule = async () => {
+  vi.resetModules();
+  return import('../src/config/env.js');
+};
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe('loadRuntimeEnv', () => {
-  it('should parse AI mode and call log path from environment variables', () => {
+  it('should allow importing env helpers when process env contains unrelated invalid values', async () => {
+    vi.stubEnv('GATEWAY_BUYER_CHAIN', 'notARealChain');
+
+    await expect(importEnvModule()).resolves.toMatchObject({
+      loadRuntimeEnv: expect.any(Function)
+    });
+  });
+
+  it('should parse AI mode and call log path from environment variables', async () => {
+    const { loadRuntimeEnv } = await importEnvModule();
     const runtimeEnv = loadRuntimeEnv({
       NODE_ENV: 'test',
       PORT: '4300',
@@ -29,7 +45,8 @@ describe('loadRuntimeEnv', () => {
     });
   });
 
-  it('should parse gateway seller settings from environment variables', () => {
+  it('should parse gateway seller settings from environment variables', async () => {
+    const { loadRuntimeEnv } = await importEnvModule();
     const runtimeEnv = loadRuntimeEnv({
       NODE_ENV: 'test',
       PORT: '4300',
@@ -48,7 +65,8 @@ describe('loadRuntimeEnv', () => {
     });
   });
 
-  it('should parse gateway buyer settings from environment variables', () => {
+  it('should parse gateway buyer settings from environment variables', async () => {
+    const { loadRuntimeEnv } = await importEnvModule();
     const runtimeEnv = loadRuntimeEnv({
       NODE_ENV: 'test',
       PORT: '4300',

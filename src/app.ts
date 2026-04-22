@@ -1,6 +1,6 @@
 import express from 'express';
 
-import { env, type RuntimeEnv } from './config/env.js';
+import { getRuntimeEnv, type RuntimeEnv } from './config/env.js';
 import type { KnowledgeExtractionProvider } from './domain/extraction/provider.js';
 import { MockKnowledgeExtractionProvider } from './domain/extraction/mock-provider.js';
 import { RealKnowledgeExtractionProvider } from './domain/extraction/real-provider.js';
@@ -40,7 +40,7 @@ export const createPaymentAdapter = (runtimeEnv: Pick<RuntimeEnv, 'paymentMode' 
 };
 
 export const createApp = (options: CreateAppOptions = {}) => {
-  const runtimeEnv = options.runtimeEnv ?? env;
+  const runtimeEnv = options.runtimeEnv ?? getRuntimeEnv();
   const callLogStore = options.callLogStore ?? new FileCallLogStore(runtimeEnv.callLogPath);
   const extractionProvider = options.extractionProvider ?? createExtractionProvider(runtimeEnv);
   const paymentAdapter =
@@ -76,5 +76,3 @@ export const createApp = (options: CreateAppOptions = {}) => {
 
   return app;
 };
-
-export const app = createApp();

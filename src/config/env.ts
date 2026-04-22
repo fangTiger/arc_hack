@@ -140,7 +140,10 @@ const parseEnvLine = (line: string): [string, string] | null => {
   return [key, value];
 };
 
-export const loadDotEnvFile = (envFilePath = join(process.cwd(), '.env')): void => {
+export const loadDotEnvFile = (
+  target: EnvSource = process.env,
+  envFilePath = join(process.cwd(), '.env')
+): EnvSource => {
   try {
     const content = readFileSync(envFilePath, 'utf8');
 
@@ -153,8 +156,8 @@ export const loadDotEnvFile = (envFilePath = join(process.cwd(), '.env')): void 
 
       const [key, value] = parsed;
 
-      if (process.env[key] === undefined) {
-        process.env[key] = value;
+      if (target[key] === undefined) {
+        target[key] = value;
       }
     }
   } catch (error) {
@@ -164,9 +167,11 @@ export const loadDotEnvFile = (envFilePath = join(process.cwd(), '.env')): void 
       throw error;
     }
   }
+
+  return target;
 };
 
-export const loadRuntimeEnv = (source: EnvSource = process.env): RuntimeEnv => {
+export const loadRuntimeEnv = (source: EnvSource): RuntimeEnv => {
   return {
     nodeEnv: source.NODE_ENV ?? 'development',
     port: parsePort(source.PORT),
@@ -193,6 +198,11 @@ export const loadRuntimeEnv = (source: EnvSource = process.env): RuntimeEnv => {
   };
 };
 
+export const getRuntimeEnv = (source: EnvSource = process.env): RuntimeEnv => {
+  const resolvedSource = source === process.env ? loadDotEnvFile(source) : source;
+  return loadRuntimeEnv(resolvedSource);
+};
+
 export const requireGatewayBuyerEnv = (
   runtimeEnv: Pick<
     RuntimeEnv,
@@ -217,7 +227,3 @@ export const requireGatewayBuyerEnv = (
     autoDepositAmount: runtimeEnv.gatewayBuyerAutoDepositAmount
   };
 };
-
-loadDotEnvFile();
-
-export const env = loadRuntimeEnv();

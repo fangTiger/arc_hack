@@ -12,6 +12,6 @@
   Executor: Inner Codex
   目标：覆盖 buyer 编排逻辑、脚本行为、环境变量解析与 runbook，明确 seller 启动、buyer 支付、充值与验收步骤。
 
-- [ ] 1.4 完成验证并提交原子变更
+- [x] 1.4 完成验证并提交原子变更
   Executor: Outer Codex + Inner Codex
   目标：运行针对性测试、全量测试、构建与 OpenSpec 校验，并形成原子提交。

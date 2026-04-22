@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { env, loadRuntimeEnv, requireGatewayBuyerEnv, type RuntimeEnv } from '../src/config/env.js';
+import { getRuntimeEnv, requireGatewayBuyerEnv, type RuntimeEnv } from '../src/config/env.js';
 import { demoCorpus } from '../src/demo/corpus.js';
 import type { ExtractionOperation, ExtractionRequest } from '../src/domain/extraction/types.js';
 import { createGatewayBuyer, type GatewayBuyer, type GatewayBuyerConfig, type GatewayBuyerRequest } from '../src/domain/payment/gateway-buyer.js';
@@ -43,6 +43,18 @@ export type GatewayBuyerDemoSummary = {
   successCount: number;
   requestIds: string[];
   paymentTransactions: string[];
+  runs: Array<{
+    requestId: string;
+    operation: ExtractionOperation;
+    price: string;
+    resultKind: string;
+    paymentTransaction: string;
+    paymentAmount: string;
+    paymentNetwork: string;
+    paymentPayer: string;
+    payloadHash: `0x${string}`;
+    receiptTxHash?: `0x${string}`;
+  }>;
   stats: CallLogStats;
   balances: {
     before: SerializableBalances;
@@ -117,7 +129,7 @@ const serializeBalances = (value: Awaited<ReturnType<GatewayBuyer['payBatch']>>[
 };
 
 export const runGatewayBuyerDemo = async (options: GatewayBuyerDemoOptions): Promise<GatewayBuyerDemoSummary> => {
-  const runtimeEnv = options.runtimeEnv ?? env;
+  const runtimeEnv = options.runtimeEnv ?? getRuntimeEnv();
   const buyerConfig = requireGatewayBuyerEnv(runtimeEnv);
   const corpus = options.corpus ?? demoCorpus;
   const operations = options.operations ?? ['summary', 'entities', 'relations'];
@@ -136,12 +148,14 @@ export const runGatewayBuyerDemo = async (options: GatewayBuyerDemoOptions): Pro
   const requests = buildRequests(corpus, operations, repeatCount);
   const batch = await buyer.payBatch(requests);
   const receiptTxHashes: `0x${string}`[] = [];
+  const runs: GatewayBuyerDemoSummary['runs'] = [];
 
   for (const payment of batch.payments) {
     await store.append(buildCallLogEntry(payment));
+    const payloadHash = `0x${createHash('sha256').update(JSON.stringify(payment.result)).digest('hex')}` as `0x${string}`;
+    let receiptTxHash: `0x${string}` | undefined;
 
     if (options.receiptWriter) {
-      const payloadHash = `0x${createHash('sha256').update(JSON.stringify(payment.result)).digest('hex')}` as `0x${string}`;
       const receipt = await options.receiptWriter.write({
         requestId: payment.requestId,
         operation: payment.operation,
@@ -149,8 +163,22 @@ export const runGatewayBuyerDemo = async (options: GatewayBuyerDemoOptions): Pro
       });
 
       receiptTxHashes.push(receipt.txHash);
+      receiptTxHash = receipt.txHash;
       await store.attachReceiptTxHash(payment.requestId, receipt.txHash);
     }
+
+    runs.push({
+      requestId: payment.requestId,
+      operation: payment.operation,
+      price: payment.pricedOperation.price,
+      resultKind: payment.result.kind,
+      paymentTransaction: payment.payment.transaction,
+      paymentAmount: payment.payment.amount,
+      paymentNetwork: payment.payment.network,
+      paymentPayer: payment.payment.payer,
+      payloadHash,
+      ...(receiptTxHash ? { receiptTxHash } : {})
+    });
   }
 
   const stats = await store.getStats();
@@ -159,6 +187,7 @@ export const runGatewayBuyerDemo = async (options: GatewayBuyerDemoOptions): Pro
     successCount: batch.payments.length,
     requestIds: batch.payments.map((payment) => payment.requestId),
     paymentTransactions: batch.payments.map((payment) => payment.payment.transaction),
+    runs,
     stats,
     balances: {
       before: serializeBalances(batch.balances.before),
@@ -183,7 +212,7 @@ export const runGatewayBuyerDemo = async (options: GatewayBuyerDemoOptions): Pro
 };
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const runtimeEnv = loadRuntimeEnv();
+  const runtimeEnv = getRuntimeEnv();
   const receiptWriter = parseReceiptWriterFromEnv();
   const artifactDirectory = process.env.DEMO_ARTIFACT_DIR ?? join(process.cwd(), 'artifacts', 'gateway-run');
   const summary = await runGatewayBuyerDemo({

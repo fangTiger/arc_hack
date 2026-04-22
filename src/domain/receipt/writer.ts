@@ -5,7 +5,10 @@ import { promisify } from 'node:util';
 import type { ExtractionOperation } from '../extraction/types.js';
 
 const execFileAsync = promisify(execFile);
-const castBinary = process.env.CAST_BIN ?? 'cast';
+
+const txHashPattern = /^0x[a-fA-F0-9]{64}$/;
+
+const resolveCastBinary = (): string => process.env.CAST_BIN ?? 'cast';
 
 export type ReceiptWriteInput = {
   requestId: string;
@@ -43,6 +46,27 @@ const buildDeterministicHash = (input: ReceiptWriteInput): `0x${string}` => {
   return `0x${digest}` as `0x${string}`;
 };
 
+const parseArcTransactionHash = (stdout: string): `0x${string}` => {
+  let payload: unknown;
+
+  try {
+    payload = JSON.parse(stdout);
+  } catch {
+    throw new Error('Arc receipt writer returned invalid JSON output.');
+  }
+
+  const txHash =
+    typeof payload === 'object' && payload !== null && 'transactionHash' in payload
+      ? payload.transactionHash
+      : undefined;
+
+  if (typeof txHash !== 'string' || !txHashPattern.test(txHash)) {
+    throw new Error('Arc receipt writer did not return a valid transaction hash.');
+  }
+
+  return txHash as `0x${string}`;
+};
+
 class MockReceiptWriter implements ReceiptWriter {
   async write(input: ReceiptWriteInput): Promise<ReceiptWriteResult> {
     return {
@@ -56,9 +80,9 @@ class ArcReceiptWriter implements ReceiptWriter {
   constructor(private readonly config: ArcReceiptWriterConfig) {}
 
   async write(input: ReceiptWriteInput): Promise<ReceiptWriteResult> {
-    const { stdout } = await execFileAsync(castBinary, [
+    const { stdout } = await execFileAsync(resolveCastBinary(), [
       'send',
-      '--async',
+      '--json',
       '--rpc-url',
       this.config.rpcUrl,
       '--private-key',
@@ -70,15 +94,9 @@ class ArcReceiptWriter implements ReceiptWriter {
       input.payloadHash
     ]);
 
-    const txHash = stdout.match(/0x[a-fA-F0-9]{64}/)?.[0];
-
-    if (!txHash) {
-      throw new Error('Arc receipt writer did not return a transaction hash.');
-    }
-
     return {
       mode: 'arc',
-      txHash: txHash as `0x${string}`
+      txHash: parseArcTransactionHash(stdout)
     };
   }
 }

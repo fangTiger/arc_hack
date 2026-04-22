@@ -2,12 +2,16 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { runDemo } from '../scripts/demo-runner.js';
 import { demoCorpus } from '../src/demo/corpus.js';
 import { createReceiptWriter } from '../src/domain/receipt/writer.js';
 import { FileCallLogStore } from '../src/store/call-log-store.js';
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe('runDemo', () => {
   it('should reset old artifacts and keep summary stats aligned with the current run', async () => {
@@ -29,7 +33,8 @@ describe('runDemo', () => {
       const summary = await runDemo({
         artifactDirectory,
         operations: ['summary', 'entities'],
-        corpus: demoCorpus.slice(0, 2)
+        corpus: demoCorpus.slice(0, 2),
+        paymentMode: 'mock'
       });
 
       expect(summary.totalRuns).toBe(4);
@@ -80,6 +85,7 @@ describe('runDemo', () => {
         operations: ['summary'],
         corpus: demoCorpus.slice(0, 1),
         repeatCount: 3,
+        paymentMode: 'mock',
         receiptWriter: createReceiptWriter({ mode: 'mock' })
       });
       const entries = await callLogStore.list();
@@ -98,6 +104,29 @@ describe('runDemo', () => {
         }
       });
       expect(entries.map((entry) => entry.receiptTxHash)).toEqual(summary.receiptTxHashes);
+    } finally {
+      rmSync(workingDirectory, { recursive: true, force: true });
+    }
+  });
+
+  it('should ignore host AI_MODE and PAYMENT_MODE pollution when building the demo app', async () => {
+    const workingDirectory = mkdtempSync(join(tmpdir(), 'arc-hack-demo-env-'));
+    const artifactDirectory = join(workingDirectory, 'artifacts');
+
+    vi.stubEnv('AI_MODE', 'real');
+    vi.stubEnv('PAYMENT_MODE', 'gateway');
+
+    try {
+      const summary = await runDemo({
+        artifactDirectory,
+        operations: ['summary'],
+        corpus: demoCorpus.slice(0, 1),
+        paymentMode: 'mock'
+      });
+
+      expect(summary.totalRuns).toBe(1);
+      expect(summary.successCount).toBe(1);
+      expect(summary.stats.totalCalls).toBe(1);
     } finally {
       rmSync(workingDirectory, { recursive: true, force: true });
     }
