@@ -31,6 +31,8 @@ npm run dev
 - `POST /api/extract/summary`
 - `POST /api/extract/entities`
 - `POST /api/extract/relations`
+- `GET /demo/graph/latest`
+- `GET /demo/graph/:sessionId`
 - `GET /ops/stats`
 
 默认情况下，`/ops/stats` 读取 `CALL_LOG_PATH`，其默认值是：
@@ -71,7 +73,31 @@ npm run demo:receipt:mock
 
 这会在运行前清理 `artifacts/receipt-demo`，并在 summary 中额外输出 `receiptTxHashes`，同时把 `receiptTxHash` 写入 call log。
 
-## 7. 自定义 demo 参数
+## 7. 运行 mock agent graph demo
+先启动 API：
+```bash
+npm run dev
+```
+
+再在另一个终端执行：
+```bash
+npm run demo:agent:mock
+```
+
+CLI 会打印：
+- `sessionId`
+- `artifactPath`
+- `graphUrl`
+
+产物结构：
+- `artifacts/agent-graph/<sessionId>/session.json`
+- `artifacts/agent-graph/latest.json`
+
+页面入口：
+- `GET /demo/graph/latest`
+- `GET /demo/graph/<sessionId>`
+
+## 8. 自定义 demo 参数
 支持的环境变量：
 - `DEMO_ARTIFACT_DIR`
 - `DEMO_OPERATIONS`，例如 `summary,entities`
@@ -79,6 +105,10 @@ npm run demo:receipt:mock
 - `RECEIPT_MODE=off|mock|arc`
 - `PAYMENT_MODE=mock`
 - `AI_MODE=mock|real`
+- `AGENT_SOURCE_TYPE=news|research`
+- `AGENT_SOURCE_TITLE`
+- `AGENT_SOURCE_TEXT`
+- `GRAPH_BASE_URL`
 
 示例：
 ```bash
@@ -90,7 +120,14 @@ DEMO_OPERATIONS=summary,relations RECEIPT_MODE=mock npm run demo:mock
 DEMO_REPEAT_COUNT=6 npm run demo:receipt:mock
 ```
 
-## 8. 运行真实 gateway buyer demo
+运行自定义 agent graph：
+```bash
+AGENT_SOURCE_TITLE="Arc expands agent commerce" \
+AGENT_SOURCE_TEXT="Arc lets agents pay for machine tools. Circle settles usage with USDC." \
+npm run demo:agent:mock
+```
+
+## 9. 运行真实 gateway buyer demo
 先启动 seller：
 ```bash
 PAYMENT_MODE=gateway npm run dev
@@ -119,4 +156,29 @@ GATEWAY_BUYER_PRIVATE_KEY=0xyourgatewaybuyerprivatekey \
 GATEWAY_BUYER_CHAIN=arcTestnet \
 RECEIPT_MODE=mock \
 npm run demo:gateway:buyer
+```
+
+## 10. 运行真实 gateway agent graph demo
+先启动 seller：
+```bash
+PAYMENT_MODE=gateway npm run dev
+```
+
+再执行：
+```bash
+GATEWAY_BUYER_BASE_URL=http://127.0.0.1:3000 \
+GATEWAY_BUYER_PRIVATE_KEY=0xyourgatewaybuyerprivatekey \
+GATEWAY_BUYER_CHAIN=arcTestnet \
+DEMO_ARTIFACT_DIR=artifacts/agent-graph \
+node --import tsx scripts/agent-graph-runner.ts
+```
+
+如需附加 receipt：
+```bash
+PAYMENT_MODE=gateway \
+GATEWAY_BUYER_BASE_URL=http://127.0.0.1:3000 \
+GATEWAY_BUYER_PRIVATE_KEY=0xyourgatewaybuyerprivatekey \
+GATEWAY_BUYER_CHAIN=arcTestnet \
+RECEIPT_MODE=mock \
+npm run demo:agent:gateway
 ```

@@ -8,6 +8,8 @@
     "dev": "tsx watch src/server.ts",
     "demo:mock": "DEMO_ARTIFACT_DIR=artifacts/demo-run node --import tsx scripts/demo-runner.ts",
     "demo:receipt:mock": "RECEIPT_MODE=mock DEMO_ARTIFACT_DIR=artifacts/receipt-demo node --import tsx scripts/demo-runner.ts",
+    "demo:agent:mock": "PAYMENT_MODE=mock DEMO_ARTIFACT_DIR=artifacts/agent-graph node --import tsx scripts/agent-graph-runner.ts",
+    "demo:agent:gateway": "PAYMENT_MODE=gateway DEMO_ARTIFACT_DIR=artifacts/agent-graph node --import tsx scripts/agent-graph-runner.ts",
     "demo:gateway:buyer": "DEMO_ARTIFACT_DIR=artifacts/gateway-run node --import tsx scripts/gateway-buyer-runner.ts",
     "start": "node dist/server.js",
     "test": "vitest",

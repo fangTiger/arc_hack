@@ -1,10 +1,11 @@
 # Arc / Circle Demo Runbook
 
 ## 目标
-这份 runbook 解决两件事：
+这份 runbook 解决几件事：
 1. 如何把 `UsageReceipt` 合约部署到 Arc
 2. 如何让 demo runner 用 `arc receipt` 模式真实写链
 3. 如何用真实 gateway buyer 跑通 seller 的 `POST /api/extract/*`
+4. 如何把三次真实付费调用组合成 agent graph session 并在页面展示
 
 ## 0. 当前版本边界
 - API 本地可运行路径以 `mock payment` 为主
@@ -36,6 +37,11 @@ export CIRCLE_GATEWAY_NETWORKS=\"eip155:5042002,eip155:84532\"
 export CIRCLE_GATEWAY_FACILITATOR_URL=\"https://gateway.example/facilitator\"
 export GATEWAY_BUYER_RPC_URL=\"https://rpc.testnet.arc.network\"
 export GATEWAY_BUYER_AUTO_DEPOSIT_AMOUNT=\"1.0\"
+```
+
+如果要让 CLI 打印可访问的 graph 页面链接，可额外设置：
+```bash
+export GRAPH_BASE_URL=\"http://127.0.0.1:3000\"
 ```
 
 ## 2. 部署 UsageReceipt 合约
@@ -122,20 +128,54 @@ node --import tsx scripts/gateway-buyer-runner.ts
 2. 再把 `receiptTxHash` 回填到对应 requestId
 3. 最后写 `summary.json`
 
-## 6. 推荐的黑客松演示顺序
+## 6. 运行真实 gateway agent graph
+在 seller 启动后，另开一个终端执行：
+```bash
+PAYMENT_MODE=gateway \
+GATEWAY_BUYER_BASE_URL=http://127.0.0.1:3000 \
+GATEWAY_BUYER_PRIVATE_KEY=0xyourgatewaybuyerprivatekey \
+GATEWAY_BUYER_CHAIN=arcTestnet \
+DEMO_ARTIFACT_DIR=artifacts/agent-graph \
+node --import tsx scripts/agent-graph-runner.ts
+```
+
+如果需要真实 Arc receipt：
+```bash
+PAYMENT_MODE=gateway \
+GATEWAY_BUYER_BASE_URL=http://127.0.0.1:3000 \
+GATEWAY_BUYER_PRIVATE_KEY=0xyourgatewaybuyerprivatekey \
+GATEWAY_BUYER_CHAIN=arcTestnet \
+RECEIPT_MODE=arc \
+DEMO_ARTIFACT_DIR=artifacts/agent-graph \
+node --import tsx scripts/agent-graph-runner.ts
+```
+
+成功后你会拿到：
+- `artifacts/agent-graph/<sessionId>/session.json`
+- `artifacts/agent-graph/latest.json`
+- `graphUrl`
+
+如果 seller 与 CLI 在同一仓库根目录运行，可直接访问：
+- `GET /demo/graph/latest`
+- `GET /demo/graph/<sessionId>`
+
+## 7. 推荐的黑客松演示顺序
 1. 先演示 `npm run demo:mock`，证明 API / 统计 / 批量调用可运行
 2. 再演示 `DEMO_REPEAT_COUNT=6 npm run demo:receipt:mock`，产出 `54` 次成功调用和 `54` 笔 receipt hash，说明 receipt 层如何把调用映射到链上凭证
 3. 启动 `PAYMENT_MODE=gateway npm run dev`，展示 seller 返回官方 `402`
 4. 再跑真实 buyer：
    `DEMO_ARTIFACT_DIR=artifacts/gateway-run node --import tsx scripts/gateway-buyer-runner.ts`
-5. 最后切到真实 Arc receipt：
-   `RECEIPT_MODE=arc DEMO_OPERATIONS=summary DEMO_ARTIFACT_DIR=artifacts/gateway-run node --import tsx scripts/gateway-buyer-runner.ts`
+5. 再跑真实 agent graph：
+   `DEMO_ARTIFACT_DIR=artifacts/agent-graph node --import tsx scripts/agent-graph-runner.ts`
+6. 最后切到真实 Arc receipt：
+   `RECEIPT_MODE=arc DEMO_ARTIFACT_DIR=artifacts/agent-graph node --import tsx scripts/agent-graph-runner.ts`
 
-## 7. 经济性说明建议
+## 8. 经济性说明建议
 答辩时建议明确区分三类证据：
 - `高频调用次数`
 - `Gateway/x402 challenge 入口`
 - `Arc receipt txHash`
+- `agent graph session 页面`
 
 并说明为什么逐笔链上支付不经济：
 - 本项目单次收费只有 `$0.003 ~ $0.005`

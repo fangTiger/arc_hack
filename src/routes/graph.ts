@@ -1,0 +1,263 @@
+import { Router } from 'express';
+
+import type { AgentSession } from '../demo/agent-graph.js';
+import type { FileAgentGraphStore } from '../store/agent-graph-store.js';
+
+type CreateGraphRouterOptions = {
+  agentGraphStore: FileAgentGraphStore;
+};
+
+const escapeHtml = (value: string): string => {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+};
+
+const renderGraphSvg = (session: AgentSession): string => {
+  const edges = session.graph.edges
+    .map((edge) => {
+      const source = session.graph.nodes.find((node) => node.id === edge.source);
+      const target = session.graph.nodes.find((node) => node.id === edge.target);
+
+      if (!source || !target) {
+        return '';
+      }
+
+      const labelX = Math.round((source.x + target.x) / 2);
+      const labelY = Math.round((source.y + target.y) / 2);
+
+      return `
+        <line x1="${source.x}" y1="${source.y}" x2="${target.x}" y2="${target.y}" stroke="#94a3b8" stroke-width="2" />
+        <text x="${labelX}" y="${labelY - 8}" text-anchor="middle" fill="#334155" font-size="12">${escapeHtml(edge.label)}</text>
+      `;
+    })
+    .join('');
+  const nodes = session.graph.nodes
+    .map(
+      (node) => `
+        <g>
+          <circle cx="${node.x}" cy="${node.y}" r="26" fill="${node.color}" opacity="0.92" />
+          <text x="${node.x}" y="${node.y + 42}" text-anchor="middle" fill="#0f172a" font-size="13">${escapeHtml(node.label)}</text>
+        </g>
+      `
+    )
+    .join('');
+
+  return `
+    <svg viewBox="0 0 480 440" role="img" aria-label="Knowledge graph">
+      <rect x="0" y="0" width="480" height="440" rx="24" fill="#f8fafc" />
+      ${edges}
+      ${nodes}
+    </svg>
+  `;
+};
+
+const renderRunCards = (session: AgentSession): string => {
+  return session.runs
+    .map(
+      (run) => `
+        <article class="run-card">
+          <h3>${escapeHtml(run.operation)}</h3>
+          <p><strong>requestId</strong>: ${escapeHtml(run.requestId)}</p>
+          <p><strong>price</strong>: ${escapeHtml(run.price)}</p>
+          <p><strong>paymentTransaction</strong>: ${escapeHtml(run.paymentTransaction)}</p>
+          <p><strong>paymentAmount</strong>: ${escapeHtml(run.paymentAmount)}</p>
+          <p><strong>paymentNetwork</strong>: ${escapeHtml(run.paymentNetwork)}</p>
+          <p><strong>paymentPayer</strong>: ${escapeHtml(run.paymentPayer)}</p>
+          <p><strong>payloadHash</strong>: ${escapeHtml(run.payloadHash)}</p>
+          ${
+            run.receiptTxHash
+              ? `<p><strong>receiptTxHash</strong>: ${escapeHtml(run.receiptTxHash)}</p>`
+              : '<p><strong>receiptTxHash</strong>: n/a</p>'
+          }
+        </article>
+      `
+    )
+    .join('');
+};
+
+const renderGraphPage = (session: AgentSession): string => {
+  return `<!DOCTYPE html>
+  <html lang="en">
+    <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <title>Agent Graph ${escapeHtml(session.sessionId)}</title>
+      <style>
+        :root {
+          color-scheme: light;
+          --bg: #f1f5f9;
+          --panel: rgba(255, 255, 255, 0.92);
+          --border: rgba(15, 23, 42, 0.12);
+          --text: #0f172a;
+          --muted: #475569;
+          --accent: #0f766e;
+        }
+
+        * { box-sizing: border-box; }
+        body {
+          margin: 0;
+          font-family: "Iowan Old Style", "Palatino Linotype", serif;
+          color: var(--text);
+          background:
+            radial-gradient(circle at top left, rgba(15, 118, 110, 0.16), transparent 28rem),
+            linear-gradient(180deg, #e2e8f0 0%, var(--bg) 60%);
+        }
+
+        main {
+          max-width: 1120px;
+          margin: 0 auto;
+          padding: 32px 20px 56px;
+        }
+
+        .hero, .panel {
+          background: var(--panel);
+          border: 1px solid var(--border);
+          border-radius: 24px;
+          box-shadow: 0 20px 45px rgba(15, 23, 42, 0.08);
+        }
+
+        .hero {
+          padding: 28px;
+          margin-bottom: 20px;
+        }
+
+        .eyebrow {
+          color: var(--accent);
+          font-size: 12px;
+          letter-spacing: 0.12em;
+          text-transform: uppercase;
+        }
+
+        .summary {
+          color: var(--muted);
+          font-size: 18px;
+          line-height: 1.65;
+          max-width: 65ch;
+        }
+
+        .meta {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+          gap: 14px;
+          margin-top: 20px;
+        }
+
+        .meta-card, .run-card {
+          background: rgba(248, 250, 252, 0.92);
+          border: 1px solid rgba(148, 163, 184, 0.26);
+          border-radius: 18px;
+          padding: 16px;
+        }
+
+        .layout {
+          display: grid;
+          grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+          gap: 20px;
+        }
+
+        .panel {
+          padding: 24px;
+        }
+
+        .run-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+          gap: 14px;
+        }
+
+        h1, h2, h3 { margin-top: 0; }
+        ul { padding-left: 18px; color: var(--muted); }
+        p { margin: 6px 0; }
+        svg { width: 100%; height: auto; display: block; }
+
+        @media (max-width: 840px) {
+          .layout {
+            grid-template-columns: 1fr;
+          }
+        }
+      </style>
+    </head>
+    <body>
+      <main>
+        <section class="hero">
+          <div class="eyebrow">Agent Graph Session</div>
+          <h1>${escapeHtml(session.source.title ?? 'Untitled Source')}</h1>
+          <p><strong>sessionId</strong>: ${escapeHtml(session.sessionId)}</p>
+          <p class="summary">${escapeHtml(session.summary)}</p>
+          <div class="meta">
+            <div class="meta-card">
+              <strong>Total Price</strong>
+              <p>${escapeHtml(session.totals.totalPrice)}</p>
+            </div>
+            <div class="meta-card">
+              <strong>Successful Runs</strong>
+              <p>${session.totals.successfulRuns}</p>
+            </div>
+            <div class="meta-card">
+              <strong>Source Type</strong>
+              <p>${escapeHtml(session.source.sourceType)}</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="layout">
+          <article class="panel">
+            <h2>Graph Nodes</h2>
+            ${renderGraphSvg(session)}
+          </article>
+
+          <article class="panel">
+            <h2>Relations</h2>
+            <ul>
+              ${session.relations
+                .map((relation) => `<li>${escapeHtml(relation.source)} ${escapeHtml(relation.relation)} ${escapeHtml(relation.target)}</li>`)
+                .join('')}
+            </ul>
+            <h2>Source Text</h2>
+            <p class="summary">${escapeHtml(session.source.text)}</p>
+          </article>
+        </section>
+
+        <section class="panel" style="margin-top: 20px;">
+          <h2>Payment Evidence</h2>
+          <div class="run-grid">
+            ${renderRunCards(session)}
+          </div>
+        </section>
+      </main>
+    </body>
+  </html>`;
+};
+
+export const createGraphRouter = (options: CreateGraphRouterOptions) => {
+  const router = Router();
+
+  router.get('/latest', async (_request, response) => {
+    const session = await options.agentGraphStore.readLatestSession();
+
+    if (!session) {
+      response.status(404).type('text/plain').send('Agent graph session not found.');
+      return;
+    }
+
+    response.status(200).type('html').send(renderGraphPage(session));
+  });
+
+  router.get('/:sessionId', async (request, response) => {
+    const session = await options.agentGraphStore.readSession(request.params.sessionId);
+
+    if (!session) {
+      response.status(404).type('text/plain').send('Agent graph session not found.');
+      return;
+    }
+
+    response.status(200).type('html').send(renderGraphPage(session));
+  });
+
+  return router;
+};
+

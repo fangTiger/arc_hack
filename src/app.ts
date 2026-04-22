@@ -1,4 +1,5 @@
 import express from 'express';
+import { join } from 'node:path';
 
 import { getRuntimeEnv, type RuntimeEnv } from './config/env.js';
 import type { KnowledgeExtractionProvider } from './domain/extraction/provider.js';
@@ -8,7 +9,9 @@ import { createCircleGatewayMiddleware } from './domain/payment/circle-gateway.j
 import { MockPaymentAdapter } from './domain/payment/mock-payment.js';
 import type { PaymentAdapter } from './domain/payment/types.js';
 import { createExtractRouter } from './routes/extract.js';
+import { createGraphRouter } from './routes/graph.js';
 import { createOpsRouter } from './routes/ops.js';
+import { FileAgentGraphStore } from './store/agent-graph-store.js';
 import { FileCallLogStore } from './store/call-log-store.js';
 
 type CreateAppOptions = {
@@ -16,6 +19,7 @@ type CreateAppOptions = {
   extractionProvider?: KnowledgeExtractionProvider;
   paymentAdapter?: PaymentAdapter;
   callLogStore?: FileCallLogStore;
+  agentGraphStore?: FileAgentGraphStore;
   requestIdFactory?: () => string;
 };
 
@@ -42,6 +46,7 @@ export const createPaymentAdapter = (runtimeEnv: Pick<RuntimeEnv, 'paymentMode' 
 export const createApp = (options: CreateAppOptions = {}) => {
   const runtimeEnv = options.runtimeEnv ?? getRuntimeEnv();
   const callLogStore = options.callLogStore ?? new FileCallLogStore(runtimeEnv.callLogPath);
+  const agentGraphStore = options.agentGraphStore ?? new FileAgentGraphStore(join(process.cwd(), 'artifacts', 'agent-graph'));
   const extractionProvider = options.extractionProvider ?? createExtractionProvider(runtimeEnv);
   const paymentAdapter =
     runtimeEnv.paymentMode === 'mock' ? options.paymentAdapter ?? createPaymentAdapter(runtimeEnv) : undefined;
@@ -68,6 +73,7 @@ export const createApp = (options: CreateAppOptions = {}) => {
       requestIdFactory: options.requestIdFactory
     })
   );
+  app.use('/demo/graph', createGraphRouter({ agentGraphStore }));
   app.use('/ops', createOpsRouter({ callLogStore }));
 
   app.get('/healthz', (_request, response) => {
