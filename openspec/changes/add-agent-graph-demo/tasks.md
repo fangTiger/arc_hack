@@ -16,6 +16,6 @@
   Executor: Inner Codex
   目标：覆盖 session runner、graph store、graph 页面、mock smoke 路径，并补充 README 与 runbook 的 `V2` 使用方式。
 
-- [ ] 1.5 完成验证并提交原子变更
+- [x] 1.5 完成验证并提交原子变更
   Executor: Outer Codex + Inner Codex
   目标：运行针对性测试、全量测试、构建与 OpenSpec 校验，由主控审查后形成原子提交。
