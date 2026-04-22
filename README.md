@@ -6,6 +6,7 @@
 - 真实 gateway buyer runner：使用官方 `GatewayClient.pay()` 对 seller 的 `POST /api/extract/*` 做真实 HTTP 支付
 - agent session runner：自动串行执行 `summary`、`entities`、`relations` 三次付费工具调用
 - graph 演示页面：`GET /demo/graph/latest` 与 `GET /demo/graph/:sessionId`
+- live console 页面：`GET /demo/live`，同页展示 live session 阶段、证据和最终图谱
 - `UsageReceipt` 合约：为成功调用补充 Arc 侧 receipt 凭证
 
 ## 当前能力
@@ -14,10 +15,12 @@
 - `gateway` 模式已接入官方 `createGatewayMiddleware({ sellerAddress })` seller 路径，路由会在支付成功后继续进入业务 handler
 - buyer 真实联调走独立脚本 `scripts/gateway-buyer-runner.ts`，产物默认写入 `artifacts/gateway-run/`
 - agent graph 产物固定写入 `artifacts/agent-graph/<sessionId>/session.json`
+- live console 状态固定写入 `artifacts/live-console/<sessionId>/live-session.json`
 - graph 页面直接读取本地 artifact，不引入额外前端构建
 - 可选 `CIRCLE_GATEWAY_NETWORKS` 与 `CIRCLE_GATEWAY_FACILITATOR_URL` 用于本地或测试环境缩小 gateway 入口范围
 - `mock receipt` 与 `arc receipt` writer 都已接好接口
 - 默认调用日志与 `/ops/stats` 共用 `artifacts/demo-run/call-log.jsonl`
+- `mock` live 路径按 `summary -> entities -> relations` 逐步推进；`gateway` live 路径只保证整体状态和最终证据
 
 ## 快速开始
 ```bash
@@ -40,8 +43,20 @@ CLI 结束时会打印：
 
 默认页面入口：
 ```bash
+http://127.0.0.1:3000/demo/live
 http://127.0.0.1:3000/demo/graph/latest
 ```
+
+如果要录制 live console：
+```bash
+npm run dev
+open http://127.0.0.1:3000/demo/live
+```
+
+说明：
+- `PAYMENT_MODE=mock` 时，页面会逐步展示 `summary -> entities -> relations`
+- `PAYMENT_MODE=gateway` 时，页面只保证整体状态和最终证据，不承诺逐步 payment 回调
+- 若已有 `queued` 或 `running` 的 live session，再次创建会返回 `409` 和当前 `sessionId`
 
 如果要直接生成 `50+` 次调用与 `50+` 笔 mock receipt 证据：
 ```bash
@@ -72,3 +87,4 @@ npm run demo:agent:gateway
 - 真实 gateway buyer 需要 `GATEWAY_BUYER_BASE_URL`、`GATEWAY_BUYER_PRIVATE_KEY`、`GATEWAY_BUYER_CHAIN`
 - agent graph CLI 可选读取 `AGENT_SOURCE_TYPE`、`AGENT_SOURCE_TITLE`、`AGENT_SOURCE_TEXT`、`GRAPH_BASE_URL`
 - 如 buyer Gateway 余额不足，可配置 `GATEWAY_BUYER_AUTO_DEPOSIT_AMOUNT`
+- live session latest 无命中时固定返回 `404`

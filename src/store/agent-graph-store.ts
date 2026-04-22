@@ -25,6 +25,10 @@ const readJsonFile = async <T>(path: string): Promise<T | null> => {
 export class FileAgentGraphStore {
   constructor(private readonly rootDirectory: string) {}
 
+  getRootDirectory(): string {
+    return this.rootDirectory;
+  }
+
   getSessionDirectory(sessionId: string): string {
     return join(this.rootDirectory, sessionId);
   }

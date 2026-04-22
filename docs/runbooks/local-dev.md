@@ -31,6 +31,10 @@ npm run dev
 - `POST /api/extract/summary`
 - `POST /api/extract/entities`
 - `POST /api/extract/relations`
+- `GET /demo/live`
+- `POST /demo/live/session`
+- `GET /demo/live/session/latest`
+- `GET /demo/live/session/:sessionId`
 - `GET /demo/graph/latest`
 - `GET /demo/graph/:sessionId`
 - `GET /ops/stats`
@@ -94,8 +98,14 @@ CLI 会打印：
 - `artifacts/agent-graph/latest.json`
 
 页面入口：
+- `GET /demo/live`
 - `GET /demo/graph/latest`
 - `GET /demo/graph/<sessionId>`
+
+live session 状态产物：
+- `artifacts/live-console/<sessionId>/live-session.json`
+- `artifacts/live-console/latest.json`
+- 可选 `artifacts/live-console/active.json`
 
 ## 8. 自定义 demo 参数
 支持的环境变量：
@@ -127,7 +137,30 @@ AGENT_SOURCE_TEXT="Arc lets agents pay for machine tools. Circle settles usage w
 npm run demo:agent:mock
 ```
 
-## 9. 运行真实 gateway buyer demo
+## 9. 录制 mock live console
+先启动 API：
+```bash
+npm run dev
+```
+
+然后打开：
+```bash
+http://127.0.0.1:3000/demo/live
+```
+
+页面会：
+- 默认填充 sample 文本
+- 调用 `POST /demo/live/session`
+- 每秒轮询 `GET /demo/live/session/:sessionId`
+- 在 `mock` 路径下按 `summary -> entities -> relations` 逐步推进
+- 在同页展示 graph 预览与 payment / receipt 证据
+
+边界：
+- `GET /demo/live/session/latest` 无命中时固定返回 `404`
+- 若已有 `queued` 或 `running` 的 active live session，再次创建会返回 `409` 和当前 `sessionId`
+- `active live session` 的定义仅为 `queued` 或 `running`
+
+## 10. 运行真实 gateway buyer demo
 先启动 seller：
 ```bash
 PAYMENT_MODE=gateway npm run dev
@@ -158,7 +191,7 @@ RECEIPT_MODE=mock \
 npm run demo:gateway:buyer
 ```
 
-## 10. 运行真实 gateway agent graph demo
+## 11. 运行真实 gateway agent graph demo
 先启动 seller：
 ```bash
 PAYMENT_MODE=gateway npm run dev
@@ -182,3 +215,19 @@ GATEWAY_BUYER_CHAIN=arcTestnet \
 RECEIPT_MODE=mock \
 npm run demo:agent:gateway
 ```
+
+## 12. 录制真实 gateway live console
+先启动 seller：
+```bash
+PAYMENT_MODE=gateway npm run dev
+```
+
+再打开：
+```bash
+http://127.0.0.1:3000/demo/live
+```
+
+这里的边界必须明确：
+- 页面只保证整体 `queued / running / completed / failed`
+- 完成后返回最终 `summary / entities / relations / graph` 与 payment evidence
+- 不承诺像 `mock` 一样逐步展示每一步 payment 回调

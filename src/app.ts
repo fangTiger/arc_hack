@@ -10,9 +10,12 @@ import { MockPaymentAdapter } from './domain/payment/mock-payment.js';
 import type { PaymentAdapter } from './domain/payment/types.js';
 import { createExtractRouter } from './routes/extract.js';
 import { createGraphRouter } from './routes/graph.js';
+import { createLiveRouter } from './routes/live.js';
 import { createOpsRouter } from './routes/ops.js';
+import { LiveAgentSessionService } from './demo/live-session.js';
 import { FileAgentGraphStore } from './store/agent-graph-store.js';
 import { FileCallLogStore } from './store/call-log-store.js';
+import { FileLiveAgentSessionStore } from './store/live-session-store.js';
 
 type CreateAppOptions = {
   runtimeEnv?: RuntimeEnv;
@@ -20,6 +23,8 @@ type CreateAppOptions = {
   paymentAdapter?: PaymentAdapter;
   callLogStore?: FileCallLogStore;
   agentGraphStore?: FileAgentGraphStore;
+  liveSessionStore?: FileLiveAgentSessionStore;
+  liveSessionService?: LiveAgentSessionService;
   requestIdFactory?: () => string;
 };
 
@@ -47,6 +52,15 @@ export const createApp = (options: CreateAppOptions = {}) => {
   const runtimeEnv = options.runtimeEnv ?? getRuntimeEnv();
   const callLogStore = options.callLogStore ?? new FileCallLogStore(runtimeEnv.callLogPath);
   const agentGraphStore = options.agentGraphStore ?? new FileAgentGraphStore(join(process.cwd(), 'artifacts', 'agent-graph'));
+  const liveSessionStore =
+    options.liveSessionStore ?? new FileLiveAgentSessionStore(join(process.cwd(), 'artifacts', 'live-console'));
+  const liveSessionService =
+    options.liveSessionService ??
+    new LiveAgentSessionService({
+      runtimeEnv,
+      liveSessionStore,
+      agentGraphArtifactRootDirectory: agentGraphStore.getRootDirectory()
+    });
   const extractionProvider = options.extractionProvider ?? createExtractionProvider(runtimeEnv);
   const paymentAdapter =
     runtimeEnv.paymentMode === 'mock' ? options.paymentAdapter ?? createPaymentAdapter(runtimeEnv) : undefined;
@@ -74,6 +88,13 @@ export const createApp = (options: CreateAppOptions = {}) => {
     })
   );
   app.use('/demo/graph', createGraphRouter({ agentGraphStore }));
+  app.use(
+    '/demo/live',
+    createLiveRouter({
+      liveSessionService,
+      runtimeEnv
+    })
+  );
   app.use('/ops', createOpsRouter({ callLogStore }));
 
   app.get('/healthz', (_request, response) => {

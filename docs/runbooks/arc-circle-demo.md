@@ -6,6 +6,7 @@
 2. 如何让 demo runner 用 `arc receipt` 模式真实写链
 3. 如何用真实 gateway buyer 跑通 seller 的 `POST /api/extract/*`
 4. 如何把三次真实付费调用组合成 agent graph session 并在页面展示
+5. 如何用 live console 录一段更适合答辩的单页演示
 
 ## 0. 当前版本边界
 - API 本地可运行路径以 `mock payment` 为主
@@ -159,15 +160,39 @@ node --import tsx scripts/agent-graph-runner.ts
 - `GET /demo/graph/latest`
 - `GET /demo/graph/<sessionId>`
 
+## 6.5 录制 live console
+启动 seller 后直接打开：
+```bash
+http://127.0.0.1:3000/demo/live
+```
+
+推荐做法：
+- 如果你要录“阶段推进感”，用 `PAYMENT_MODE=mock`
+- 如果你要录“真实支付闭环”，用 `PAYMENT_MODE=gateway`
+- `gateway` live 页面只保证整体状态和最终证据，不承诺逐步回放每一步 payment
+
+你可以用 live console 展示：
+- 左侧输入区与 sample 填充
+- 右侧 `create -> summary -> entities -> relations -> graph` 阶段卡片
+- 每步 `requestId / price / paymentTransaction / receiptTxHash`
+- 完成后同页出现最终图谱
+
+相关产物：
+- `artifacts/live-console/<sessionId>/live-session.json`
+- `artifacts/live-console/latest.json`
+- `artifacts/agent-graph/<sessionId>/session.json`
+
 ## 7. 推荐的黑客松演示顺序
 1. 先演示 `npm run demo:mock`，证明 API / 统计 / 批量调用可运行
-2. 再演示 `DEMO_REPEAT_COUNT=6 npm run demo:receipt:mock`，产出 `54` 次成功调用和 `54` 笔 receipt hash，说明 receipt 层如何把调用映射到链上凭证
-3. 启动 `PAYMENT_MODE=gateway npm run dev`，展示 seller 返回官方 `402`
-4. 再跑真实 buyer：
+2. 再演示 `http://127.0.0.1:3000/demo/live`，用 `mock` 路径录一段逐步推进的单页 live console
+3. 再演示 `DEMO_REPEAT_COUNT=6 npm run demo:receipt:mock`，产出 `54` 次成功调用和 `54` 笔 receipt hash，说明 receipt 层如何把调用映射到链上凭证
+4. 启动 `PAYMENT_MODE=gateway npm run dev`，展示 seller 返回官方 `402`
+5. 再跑真实 buyer：
    `DEMO_ARTIFACT_DIR=artifacts/gateway-run node --import tsx scripts/gateway-buyer-runner.ts`
-5. 再跑真实 agent graph：
+6. 再跑真实 agent graph：
    `DEMO_ARTIFACT_DIR=artifacts/agent-graph node --import tsx scripts/agent-graph-runner.ts`
-6. 最后切到真实 Arc receipt：
+7. 最后回到 `http://127.0.0.1:3000/demo/live`，用 `gateway` 路径展示整体完成态和最终证据
+8. 最后切到真实 Arc receipt：
    `RECEIPT_MODE=arc DEMO_ARTIFACT_DIR=artifacts/agent-graph node --import tsx scripts/agent-graph-runner.ts`
 
 ## 8. 经济性说明建议
