@@ -514,9 +514,9 @@ export function getPageStateSummary(session: LiveWorkbenchSessionLike | null | u
     return {
       label: '待导入',
       tone: 'idle',
-      summary: '待导入：请先在导入仓放入链接、正文或预置样本，工作台会保留主区骨架等待结果进入。',
+      summary: '待导入：先在线索入口放入链接、正文或预置样本。',
       nextActionLabel: '导入材料',
-      nextActionHint: '从导入仓开始一次新分析。'
+      nextActionHint: '从线索入口开始一次新分析。'
     };
   }
 
@@ -528,7 +528,7 @@ export function getPageStateSummary(session: LiveWorkbenchSessionLike | null | u
     return {
       label: '待分析',
       tone: 'ready',
-      summary: '待分析：材料已就位，系统正在排队启动本轮分析。',
+      summary: '待分析：材料已就位，等待本轮启动。',
       nextActionLabel: '等待启动',
       nextActionHint: '保持当前工作台即可，主区会在返回后补齐。'
     };
@@ -539,10 +539,10 @@ export function getPageStateSummary(session: LiveWorkbenchSessionLike | null | u
       label: '分析中',
       tone: 'running',
       summary: retainedResult
-        ? '分析中：新一轮结果生成中，旧结果会继续保留在当前工作台，直到新结果成功替换。'
+        ? '分析中：新一轮结果生成中，旧结果暂时保留。'
         : session.mode === 'gateway'
-          ? '分析中：批量支付与结果处理进行中，工作台会在响应返回后按阶段回放结果。'
-          : '分析中：事件判断正在生成，主区会按完成顺序逐块填充。',
+          ? '分析中：批量支付与结果处理进行中。'
+          : '分析中：事件判断、主体和证据正在回填。',
       nextActionLabel: '等待结果',
       nextActionHint: retainedResult ? '旧结果仍可继续复核。' : '保持当前页面以查看增量更新。'
     };
@@ -553,8 +553,8 @@ export function getPageStateSummary(session: LiveWorkbenchSessionLike | null | u
       label: '分析失败',
       tone: 'failed',
       summary: retainedResult
-        ? '分析失败：本轮失败，已保留旧结果与已完成区块，你可以在当前工作台直接重试。'
-        : '分析失败：当前结果未能完成，请先检查导入来源、运行状态与分析凭证。',
+        ? '分析失败：本轮失败，旧结果已保留。'
+        : '分析失败：请先检查来源、运行状态与调用凭证。',
       nextActionLabel: retainedResult ? '重新分析' : '重试分析',
       nextActionHint: retainedResult ? '旧结果仍保留在主区与侧栏。' : '建议先确认材料与导入方式。'
     };
@@ -564,7 +564,7 @@ export function getPageStateSummary(session: LiveWorkbenchSessionLike | null | u
     return {
       label: '分析完成',
       tone: 'completed',
-      summary: '分析完成：主区已生成可连续阅读的事件总览、关键判断与证据摘录。',
+      summary: '分析完成：执行摘要、核心结论与证据锚点已生成。',
       nextActionLabel: '重新分析',
       nextActionHint: '可在保留当前上下文的前提下启动新一轮分析。'
     };
@@ -720,18 +720,18 @@ export function buildJudgments(
     ];
     judgments.push({
       kicker: '跟进提示',
-      title: firstRelation ? '辅助关系图已形成初步导航' : '建议结合凭证与原文继续复核',
+      title: firstRelation ? '关系导航已形成初步线索' : '建议结合凭证与原文继续复核',
       body: firstRelation
-        ? `${firstRelation.source} ${firstRelation.relation} ${firstRelation.target}。辅助关系图适合快速扫清连接，但最终判断仍应以原文与凭证为准。`
+        ? `${firstRelation.source} ${firstRelation.relation} ${firstRelation.target}。关系导航适合快速扫清连接，但最终判断仍应以原文与凭证为准。`
         : metadata.importStatus === 'cache'
           ? '当前结果来自缓存回退，可稳定复看，但建议保留人工复核原文语境。'
-          : '关系整理已完成，可以结合分析凭证与原文继续判断这条线索是否值得跟进。',
+          : '关系整理已完成，可以结合调用凭证与原文继续判断这条线索是否值得跟进。',
       previewBody: buildPreviewText(
         firstRelation
-          ? `${firstRelation.source} ${firstRelation.relation} ${firstRelation.target}。辅助关系图适合快速扫清连接，但最终判断仍应以原文与凭证为准。`
+          ? `${firstRelation.source} ${firstRelation.relation} ${firstRelation.target}。关系导航适合快速扫清连接，但最终判断仍应以原文与凭证为准。`
           : metadata.importStatus === 'cache'
             ? '当前结果来自缓存回退，可稳定复看，但建议保留人工复核原文语境。'
-            : '关系整理已完成，可以结合分析凭证与原文继续判断这条线索是否值得跟进。'
+            : '关系整理已完成，可以结合调用凭证与原文继续判断这条线索是否值得跟进。'
       ),
       evidenceTitle: '相关原文片段',
       evidenceQuote: sentences[2] ?? sentences[1] ?? sentences[0] ?? summary ?? '等待更多原文片段到位。',
@@ -787,7 +787,7 @@ export function createLiveWorkbenchViewModel(
     : summaryReady
     ? hasSourceTitle
       ? briefing
-      : '正文分析已完成，可在下方查看关键判断与证据摘录。'
+      : '正文分析已完成，可在下方查看核心结论与证据锚点。'
     : pageState.summary;
   const successfulRuns = session?.agentSession?.totals?.successfulRuns ?? session?.steps?.filter((step) => step.status === 'completed').length ?? 0;
   const credentialStatusValue =
@@ -809,8 +809,8 @@ export function createLiveWorkbenchViewModel(
   const judgments = buildJudgments(session, supportedSourceLabels);
   const evidenceSectionNote = retainedResult
     ? session?.status === 'failed'
-      ? '本轮失败，已保留上一版证据摘录与失败反馈，便于继续人工复核；暂不宣称已完成逐句证据对齐。'
-      : '当前展示的是上一版证据摘录；新结果生成期间会继续保留它们供人工复核，直到新结果成功替换。'
+      ? '本轮失败，已保留上一版证据锚点与失败反馈，便于继续人工复核；暂不宣称已完成逐句证据对齐。'
+      : '当前展示的是上一版证据锚点；新结果生成期间会继续保留它们供人工复核，直到新结果成功替换。'
     : '当前展示的是相关原文片段，便于人工复核；暂不宣称已完成逐句证据对齐。';
   const deepReadingLead = summaryReady
     ? '完整摘要、延展判断与复核提示会在这里继续展开，帮助你在首屏结论之外继续深读。'
@@ -827,7 +827,7 @@ export function createLiveWorkbenchViewModel(
             judgments
               .slice(0, 3)
               .map((judgment) => `${judgment.title}：${judgment.body}`)
-              .join('\n\n') || '首屏判断尚未完全展开，建议结合证据摘录与主体关系继续补充判断。'
+              .join('\n\n') || '首屏结论尚未完全展开，建议结合证据锚点与主体关系继续补充判断。'
         },
         {
           title: '复核提示',

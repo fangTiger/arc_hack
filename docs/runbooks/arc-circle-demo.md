@@ -1,5 +1,7 @@
 # Arc / Circle Demo Runbook
 
+![Arc Logo](../pic/logo.png)
+
 ## 目标
 这份 runbook 解决几件事：
 1. 如何把 `UsageReceipt` 合约部署到 Arc

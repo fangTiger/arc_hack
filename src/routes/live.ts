@@ -1,10 +1,16 @@
 import { Router } from 'express';
 import type { Response } from 'express';
+import { fileURLToPath } from 'node:url';
 
 import type { RuntimeEnv } from '../config/env.js';
 import { demoCorpus } from '../demo/corpus.js';
+import { LiveNewsPresetProvider } from '../demo/live-preset-provider.js';
 import { LiveAgentSessionService } from '../demo/live-session.js';
-import { liveNewsPresets } from '../demo/news-presets.js';
+import {
+  ARC_DYNAMIC_PRESET_SOURCES,
+  liveNewsPresets,
+  type LiveNewsPreset
+} from '../demo/news-presets.js';
 import type { SourceImportMode, SourceMetadata, SourceType } from '../domain/extraction/types.js';
 import {
   SUPPORTED_NEWS_SOURCE_LABELS,
@@ -87,6 +93,8 @@ type ParsedCreateSessionBody =
 const SUPPORTED_SOURCE_SITE_VALUES = new Set<SupportedNewsSite>(['wublock123', 'panews', 'chaincatcher']);
 const SUPPORTED_IMPORT_MODES = new Set<SourceImportMode>(['manual', 'link', 'preset']);
 const SUPPORTED_IMPORT_STATUSES = new Set<SourceMetadata['importStatus']>(['live', 'cache']);
+const LIVE_BRAND_LOGO_URL = '/demo/live/brand/logo.png';
+const LIVE_BRAND_LOGO_PATH = fileURLToPath(new URL('../../docs/pic/logo.png', import.meta.url));
 
 const escapeHtml = (value: string): string => {
   return value
@@ -282,11 +290,36 @@ const applyNoStoreHeaders = (response: Response): void => {
   response.set('Expires', '0');
 };
 
-const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
+const renderLiveConsolePage = (runtimeEnv: RuntimeEnv, presets: LiveNewsPreset[] = liveNewsPresets): string => {
   const sample = demoCorpus[0];
   const isLiveSessionTerminalStatusSource = isLiveSessionTerminalStatus.toString();
   const createLivePollFailureTrackerSource = createLivePollFailureTracker.toString();
-  const presetCards = liveNewsPresets
+  const recommendedTrialCards = ARC_DYNAMIC_PRESET_SOURCES.map(
+    (source, index) => `
+      <article class="trial-link-card">
+        <span class="trial-link-source">${escapeHtml(SUPPORTED_NEWS_SOURCE_LABELS[source.sourceSite])}</span>
+        <strong>${escapeHtml(source.title)}</strong>
+        <span class="trial-link-url">${escapeHtml(source.articleUrl)}</span>
+        <div class="trial-link-actions">
+          <button
+            type="button"
+            class="secondary trial-fill-button"
+            data-trial-link="${escapeHtml(source.articleUrl)}"
+            data-testid="trial-fill-button-${index}"
+          >一键填入</button>
+          <a
+            class="secondary trial-open-link"
+            href="${escapeHtml(source.articleUrl)}"
+            target="_blank"
+            rel="noreferrer"
+            aria-label="${escapeHtml(source.title)}"
+            data-testid="trial-link-${index}"
+          >查看原文</a>
+        </div>
+      </article>
+    `
+  ).join('');
+  const presetCards = presets
     .map(
       (preset) => `
         <article
@@ -294,7 +327,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           data-preset-id="${escapeHtml(preset.id)}"
           data-detail-payload="${escapeHtml(JSON.stringify({
             kind: 'preset',
-            kicker: '预置资讯卡',
+            kicker: preset.origin === 'dynamic' ? 'Arc 实时线索' : '预置资讯卡',
             title: preset.title,
             subtitle: SUPPORTED_NEWS_SOURCE_LABELS[preset.sourceSite],
             mainLabel: '摘要',
@@ -315,7 +348,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           role="button"
         >
           <div class="preset-meta">
-            <span>${escapeHtml(SUPPORTED_NEWS_SOURCE_LABELS[preset.sourceSite])}</span>
+            <span>${escapeHtml(preset.origin === 'dynamic' ? 'Arc 实时线索' : SUPPORTED_NEWS_SOURCE_LABELS[preset.sourceSite])}</span>
             <span>${escapeHtml(new URL(preset.articleUrl).hostname)}</span>
           </div>
           <h3>${escapeHtml(preset.title)}</h3>
@@ -333,52 +366,121 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
     .join('');
 
   return `<!DOCTYPE html>
-  <html lang="zh-CN">
+  <html lang="zh-CN" data-theme="light">
     <head>
       <meta charset="utf-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1" />
-      <title>可信投研工作台</title>
+      <title>Arc Signal Desk</title>
+      <link rel="icon" type="image/png" href="${LIVE_BRAND_LOGO_URL}" />
+      <link rel="shortcut icon" type="image/png" href="${LIVE_BRAND_LOGO_URL}" />
+      <script>
+        try {
+          if (window.localStorage.getItem('live-workbench-theme') === 'dark') {
+            document.documentElement.setAttribute('data-theme', 'dark');
+          }
+        } catch {}
+      </script>
       <style>
-        :root {
+        html[data-theme="light"] {
           color-scheme: light;
-          --bg: #f7f2e7;
-          --paper: rgba(255, 251, 245, 0.92);
-          --ink: #1f2937;
-          --muted: #6b7280;
-          --line: rgba(31, 41, 55, 0.12);
-          --accent: #0f766e;
-          --accent-soft: rgba(15, 118, 110, 0.12);
-          --gold: #b45309;
-          --danger: #b91c1c;
+        }
+
+        :root {
+          color-scheme: dark;
+          --bg: #050912;
+          --bg-secondary: #0b121e;
+          --panel: rgba(11, 17, 28, 0.84);
+          --panel-strong: rgba(9, 14, 24, 0.96);
+          --panel-soft: rgba(16, 24, 36, 0.72);
+          --paper: rgba(8, 13, 23, 0.9);
+          --ink: #edf4fb;
+          --ink-strong: #ffffff;
+          --muted: #93a4b8;
+          --line: rgba(124, 143, 166, 0.22);
+          --line-strong: rgba(134, 231, 212, 0.22);
+          --accent: #86e7d4;
+          --accent-strong: #8cc6ff;
+          --accent-soft: rgba(140, 198, 255, 0.16);
+          --gold: #d6a96c;
+          --danger: #fb7185;
+          --success: #34d399;
+          --shadow: rgba(2, 8, 23, 0.54);
+        }
+
+        html[data-theme="light"] {
+          --ink: #223649;
+          --ink-strong: #102132;
+          --muted: #5a6b7d;
+          --line: rgba(77, 94, 117, 0.14);
+          --line-strong: rgba(15, 114, 120, 0.18);
+          --accent: #0f7278;
+          --accent-strong: #3b82f6;
+          --accent-soft: rgba(59, 130, 246, 0.08);
+          --gold: #b7793e;
+          --danger: #be123c;
+          --success: #15803d;
+          --shadow: rgba(15, 23, 42, 0.08);
         }
 
         * { box-sizing: border-box; }
         body {
           margin: 0;
-          font-family: "Baskerville", "Iowan Old Style", serif;
+          font-family: "Avenir Next", "Segoe UI", "PingFang SC", sans-serif;
           color: var(--ink);
           background:
-            radial-gradient(circle at top left, rgba(180, 83, 9, 0.18), transparent 24rem),
-            radial-gradient(circle at top right, rgba(15, 118, 110, 0.18), transparent 20rem),
-            linear-gradient(180deg, #fbf7ef 0%, var(--bg) 100%);
+            radial-gradient(circle at 12% 0%, rgba(140, 198, 255, 0.18), transparent 24rem),
+            radial-gradient(circle at 88% 8%, rgba(134, 231, 212, 0.14), transparent 18rem),
+            radial-gradient(circle at 50% 120%, rgba(214, 169, 108, 0.08), transparent 26rem),
+            linear-gradient(180deg, #07101b 0%, var(--bg) 40%, #02060d 100%);
+          min-height: 100vh;
+          position: relative;
+        }
+
+        body::before {
+          content: "";
+          position: fixed;
+          inset: 0;
+          pointer-events: none;
+          background:
+            linear-gradient(rgba(148, 163, 184, 0.04) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(148, 163, 184, 0.04) 1px, transparent 1px);
+          background-size: 120px 120px;
+          mask-image: radial-gradient(circle at center, black, transparent 88%);
+        }
+
+        html[data-theme="light"] body {
+          background:
+            radial-gradient(circle at 10% 0%, rgba(59, 130, 246, 0.1), transparent 22rem),
+            radial-gradient(circle at 88% 6%, rgba(15, 114, 120, 0.08), transparent 18rem),
+            linear-gradient(180deg, #fcfcf9 0%, #f4f8fb 52%, #eef2f5 100%);
+        }
+
+        html[data-theme="light"] body::before {
+          background:
+            linear-gradient(rgba(14, 165, 233, 0.05) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(14, 165, 233, 0.05) 1px, transparent 1px);
         }
 
         main {
-          max-width: 1280px;
+          max-width: 1540px;
           margin: 0 auto;
-          padding: 28px 18px 48px;
+          padding: 26px 24px 56px;
+          position: relative;
+          z-index: 1;
         }
 
         .control-strip,
         .toolbelt-shell {
-          margin-bottom: 18px;
-          padding: 22px;
+          margin-bottom: 20px;
+          padding: 22px 24px;
         }
 
         .control-strip h1 {
-          margin: 0 0 8px;
-          font-size: clamp(2rem, 4vw, 3.2rem);
-          line-height: 0.96;
+          margin: 0 0 10px;
+          font-size: clamp(2.2rem, 4vw, 3.85rem);
+          line-height: 0.92;
+          letter-spacing: -0.04em;
+          color: var(--ink-strong);
         }
 
         .control-grid,
@@ -386,14 +488,60 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           display: grid;
           grid-template-columns: repeat(5, minmax(0, 1fr));
           gap: 12px;
-          margin-top: 18px;
+          margin-top: 20px;
         }
 
         .control-card {
-          border-radius: 20px;
-          border: 1px solid rgba(148, 163, 184, 0.18);
-          background: rgba(255, 255, 255, 0.82);
-          padding: 16px;
+          border-radius: 18px;
+          border: 1px solid var(--line);
+          background:
+            linear-gradient(180deg, rgba(15, 23, 42, 0.9), rgba(8, 16, 28, 0.84));
+          padding: 16px 16px 18px;
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+          transition: border-color 180ms ease, box-shadow 180ms ease, background 180ms ease;
+        }
+
+        .control-card[data-card-tone="ready"] {
+          border-color: rgba(140, 198, 255, 0.24);
+          background:
+            linear-gradient(180deg, rgba(13, 24, 40, 0.92), rgba(8, 16, 28, 0.86));
+        }
+
+        .control-card[data-card-tone="running"] {
+          border-color: rgba(94, 234, 212, 0.34);
+          background:
+            linear-gradient(180deg, rgba(10, 29, 40, 0.94), rgba(8, 18, 30, 0.9));
+          box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.04),
+            0 16px 32px rgba(8, 145, 178, 0.12);
+        }
+
+        .control-card[data-card-tone="completed"] {
+          border-color: rgba(52, 211, 153, 0.3);
+          background:
+            linear-gradient(180deg, rgba(8, 28, 28, 0.94), rgba(7, 18, 20, 0.88));
+          box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.04),
+            0 14px 28px rgba(16, 185, 129, 0.1);
+        }
+
+        .control-card[data-card-tone="failed"] {
+          border-color: rgba(251, 113, 133, 0.28);
+          background:
+            linear-gradient(180deg, rgba(42, 13, 20, 0.94), rgba(23, 8, 12, 0.9));
+        }
+
+        .control-card[data-card-tone="ready"] .control-label,
+        .control-card[data-card-tone="running"] .control-label {
+          color: var(--accent-strong);
+        }
+
+        .control-card[data-card-tone="completed"] .control-label {
+          color: #86efac;
+        }
+
+        .control-card[data-card-tone="failed"] .control-label {
+          color: #fda4af;
         }
 
         .control-card-wide {
@@ -402,30 +550,45 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
 
         .control-label {
           font-size: 12px;
-          letter-spacing: 0.08em;
+          letter-spacing: 0.14em;
           text-transform: uppercase;
-          color: var(--gold);
-          margin-bottom: 10px;
+          color: var(--accent);
+          margin-bottom: 12px;
         }
 
         .control-value {
           font-size: 18px;
-          line-height: 1.45;
+          line-height: 1.5;
+          color: var(--ink-strong);
+        }
+
+        .control-card[data-card-tone="ready"] .control-value {
+          color: #dbeafe;
+        }
+
+        .control-card[data-card-tone="running"] .control-value {
+          color: #f0fdfa;
+        }
+
+        .control-card[data-card-tone="completed"] .control-value {
+          color: #d1fae5;
+        }
+
+        .control-card[data-card-tone="failed"] .control-value {
+          color: #ffe4e6;
         }
 
         .hero, .panel {
-          background: var(--paper);
+          background:
+            linear-gradient(180deg, rgba(10, 19, 33, 0.92), rgba(7, 14, 24, 0.86));
           border: 1px solid var(--line);
           border-radius: 28px;
-          box-shadow: 0 22px 48px rgba(31, 41, 55, 0.08);
-          backdrop-filter: blur(18px);
+          box-shadow:
+            0 30px 70px var(--shadow),
+            inset 0 1px 0 rgba(255, 255, 255, 0.03);
+          backdrop-filter: blur(20px);
           position: relative;
           overflow: hidden;
-        }
-
-        .hero {
-          padding: 26px;
-          margin-bottom: 18px;
         }
 
         .hero::before,
@@ -433,7 +596,9 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           content: "";
           position: absolute;
           inset: 0;
-          background: linear-gradient(135deg, rgba(255, 255, 255, 0.42), transparent 34%, rgba(15, 118, 110, 0.03));
+          background:
+            linear-gradient(125deg, rgba(94, 234, 212, 0.08), transparent 34%, rgba(56, 189, 248, 0.04)),
+            radial-gradient(circle at top right, rgba(56, 189, 248, 0.08), transparent 16rem);
           pointer-events: none;
         }
 
@@ -443,41 +608,233 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           z-index: 1;
         }
 
+        .command-deck {
+          border-color: rgba(56, 189, 248, 0.18);
+        }
+
+        .workbench-shell {
+          border-color: rgba(94, 234, 212, 0.14);
+        }
+
+        .signal-sidebar .sidebar-card {
+          background:
+            linear-gradient(180deg, rgba(8, 17, 29, 0.94), rgba(5, 12, 22, 0.88));
+        }
+
+        html[data-theme="light"] .hero,
+        html[data-theme="light"] .panel {
+          background:
+            linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(246, 250, 255, 0.92));
+          box-shadow:
+            0 26px 52px rgba(15, 23, 42, 0.08),
+            inset 0 1px 0 rgba(255, 255, 255, 0.64);
+        }
+
+        html[data-theme="light"] .panel::before,
+        html[data-theme="light"] .hero::before {
+          background:
+            linear-gradient(125deg, rgba(14, 165, 233, 0.08), transparent 34%, rgba(20, 184, 166, 0.05)),
+            radial-gradient(circle at top right, rgba(14, 165, 233, 0.08), transparent 16rem);
+        }
+
+        html[data-theme="light"] .control-card,
+        html[data-theme="light"] .source-drawer,
+        html[data-theme="light"] .source-drawer[open],
+        html[data-theme="light"] .preset-card,
+        html[data-theme="light"] .preset-launcher,
+        html[data-theme="light"] .stage-card,
+        html[data-theme="light"] .overview-card,
+        html[data-theme="light"] .sidebar-card,
+        html[data-theme="light"] .judgment-card,
+        html[data-theme="light"] .evidence-card,
+        html[data-theme="light"] .deep-reading-card,
+        html[data-theme="light"] .detail-panel,
+        html[data-theme="light"] .detail-section,
+        html[data-theme="light"] .detail-context-card,
+        html[data-theme="light"] .graph-modal-panel,
+        html[data-theme="light"] .graph-preview,
+        html[data-theme="light"] .graph-surface,
+        html[data-theme="light"] .metric-tile,
+        html[data-theme="light"] .evidence-item {
+          background:
+            linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(244, 249, 255, 0.92));
+          box-shadow: 0 16px 34px rgba(15, 23, 42, 0.08);
+        }
+
+        html[data-theme="light"] .control-card[data-card-tone="ready"] {
+          border-color: rgba(59, 130, 246, 0.16);
+          background:
+            linear-gradient(180deg, rgba(243, 248, 255, 0.98), rgba(235, 244, 255, 0.96));
+        }
+
+        html[data-theme="light"] .control-card[data-card-tone="running"] {
+          border-color: rgba(14, 165, 233, 0.26);
+          background:
+            linear-gradient(180deg, rgba(236, 250, 255, 0.98), rgba(224, 246, 255, 0.96));
+          box-shadow: 0 16px 28px rgba(14, 165, 233, 0.08);
+        }
+
+        html[data-theme="light"] .control-card[data-card-tone="completed"] {
+          border-color: rgba(16, 185, 129, 0.24);
+          background:
+            linear-gradient(180deg, rgba(236, 253, 245, 0.98), rgba(226, 250, 239, 0.96));
+          box-shadow: 0 16px 28px rgba(16, 185, 129, 0.08);
+        }
+
+        html[data-theme="light"] .control-card[data-card-tone="failed"] {
+          border-color: rgba(244, 63, 94, 0.2);
+          background:
+            linear-gradient(180deg, rgba(255, 241, 242, 0.98), rgba(255, 228, 230, 0.96));
+        }
+
+        html[data-theme="light"] .control-card[data-card-tone="ready"] .control-label {
+          color: #2563eb;
+        }
+
+        html[data-theme="light"] .control-card[data-card-tone="running"] .control-label {
+          color: #0f766e;
+        }
+
+        html[data-theme="light"] .control-card[data-card-tone="completed"] .control-label {
+          color: #047857;
+        }
+
+        html[data-theme="light"] .control-card[data-card-tone="failed"] .control-label {
+          color: #be123c;
+        }
+
+        html[data-theme="light"] .control-card[data-card-tone="ready"] .control-value {
+          color: #1d4ed8;
+        }
+
+        html[data-theme="light"] .control-card[data-card-tone="running"] .control-value {
+          color: #0f766e;
+        }
+
+        html[data-theme="light"] .control-card[data-card-tone="completed"] .control-value {
+          color: #065f46;
+        }
+
+        html[data-theme="light"] .control-card[data-card-tone="failed"] .control-value {
+          color: #9f1239;
+        }
+
+        html[data-theme="light"] .overview-card {
+          background:
+            radial-gradient(circle at top right, rgba(56, 189, 248, 0.12), transparent 12rem),
+            radial-gradient(circle at bottom left, rgba(20, 184, 166, 0.08), transparent 18rem),
+            linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(242, 248, 255, 0.94));
+        }
+
+        html[data-theme="light"] input,
+        html[data-theme="light"] textarea,
+        html[data-theme="light"] select,
+        html[data-theme="light"] .evidence-value,
+        html[data-theme="light"] .evidence-quote,
+        html[data-theme="light"] .detail-quote {
+          background: rgba(255, 255, 255, 0.96);
+          color: var(--ink-strong);
+          border-color: rgba(148, 163, 184, 0.22);
+        }
+
+        html[data-theme="light"] .detail-scrim {
+          background: rgba(15, 23, 42, 0.18);
+        }
+
+        html[data-theme="light"] .secondary,
+        html[data-theme="light"] .copy-button,
+        html[data-theme="light"] .detail-action-button,
+        html[data-theme="light"] .status-chip,
+        html[data-theme="light"] .source-drawer-toggle,
+        html[data-theme="light"] .trial-link-card,
+        html[data-theme="light"] .meta-pill,
+        html[data-theme="light"] .entity-chip {
+          background: rgba(14, 165, 233, 0.08);
+          color: var(--accent);
+          border-color: rgba(14, 165, 233, 0.16);
+        }
+
+        html[data-theme="light"] .arc-mark {
+          background: linear-gradient(135deg, rgba(14, 165, 233, 0.12), rgba(20, 184, 166, 0.1));
+          border-color: rgba(14, 165, 233, 0.14);
+        }
+
+        html[data-theme="light"] .status-chip-icon {
+          background: rgba(14, 165, 233, 0.08);
+          border-color: rgba(14, 165, 233, 0.16);
+        }
+
+        html[data-theme="light"] .status-chip-progress {
+          background: rgba(59, 130, 246, 0.12);
+        }
+
+        html[data-theme="light"] .status-chip[data-status-tone="completed"] {
+          border-color: rgba(16, 185, 129, 0.26);
+          color: #047857;
+        }
+
+        html[data-theme="light"] .status-chip[data-status-tone="failed"] {
+          background: rgba(244, 63, 94, 0.08);
+          color: #be123c;
+          border-color: rgba(244, 63, 94, 0.16);
+        }
+
+        html[data-theme="light"] .status-chip[data-status-tone="completed"] .status-chip-label {
+          color: #065f46;
+        }
+
+        html[data-theme="light"] .status-chip[data-status-tone="failed"] .status-chip-label {
+          color: #9f1239;
+        }
+
+        html[data-theme="light"] .stage-card[data-status="running"] {
+          background: linear-gradient(180deg, rgba(240, 249, 255, 0.96), rgba(230, 247, 255, 0.94));
+          box-shadow: 0 16px 28px rgba(14, 165, 233, 0.08);
+        }
+
+        html[data-theme="light"] .signal-sidebar .sidebar-card {
+          background:
+            linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(242, 248, 255, 0.92));
+        }
+
+        html[data-theme="light"] .graph-list ul,
+        html[data-theme="light"] .muted,
+        html[data-theme="light"] .mode-note,
+        html[data-theme="light"] .source-note,
+        html[data-theme="light"] .judgment-card p,
+        html[data-theme="light"] .sidebar-card p,
+        html[data-theme="light"] .evidence-card p,
+        html[data-theme="light"] .overview-card p,
+        html[data-theme="light"] .deep-reading-card p,
+        html[data-theme="light"] .detail-copy {
+          color: var(--muted);
+        }
+
         .eyebrow {
           display: inline-flex;
           gap: 10px;
           font-size: 12px;
-          letter-spacing: 0.16em;
+          letter-spacing: 0.2em;
           text-transform: uppercase;
           color: var(--accent);
         }
 
-        .hero h1 {
-          margin: 12px 0 10px;
-          font-size: clamp(2.2rem, 5vw, 4rem);
-          line-height: 0.95;
-        }
-
-        .hero p {
-          max-width: 70ch;
-          color: var(--muted);
-          font-size: 18px;
-          line-height: 1.6;
-        }
-
         .layout {
           display: grid;
-          grid-template-columns: 1fr;
-          gap: 18px;
+          grid-template-columns: minmax(320px, 0.84fr) minmax(0, 2fr);
+          gap: 20px;
+          align-items: start;
         }
 
         .input-panel {
           order: 0;
-          position: static;
+          position: sticky;
+          top: 24px;
         }
 
         .result-panel {
           order: 1;
+          min-width: 0;
         }
 
         .panel {
@@ -512,16 +869,17 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
         input, textarea, select {
           width: 100%;
           padding: 14px 16px;
-          border-radius: 18px;
-          border: 1px solid rgba(148, 163, 184, 0.35);
-          background: rgba(255, 255, 255, 0.92);
+          border-radius: 16px;
+          border: 1px solid rgba(148, 163, 184, 0.22);
+          background: rgba(7, 14, 24, 0.9);
           color: var(--ink);
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
         }
 
         textarea {
-          min-height: 220px;
+          min-height: 240px;
           resize: vertical;
-          line-height: 1.6;
+          line-height: 1.7;
         }
 
         .button-row {
@@ -531,7 +889,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
         }
 
         button {
-          border: none;
+          border: 1px solid transparent;
           border-radius: 999px;
           padding: 13px 18px;
           cursor: pointer;
@@ -540,16 +898,18 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
 
         button:hover {
           transform: translateY(-1px);
-          box-shadow: 0 14px 22px rgba(15, 23, 42, 0.1);
+          box-shadow: 0 14px 28px rgba(8, 15, 28, 0.34);
         }
 
         .primary {
-          background: linear-gradient(135deg, #0f766e, #115e59);
-          color: white;
+          background: linear-gradient(135deg, rgba(56, 189, 248, 0.94), rgba(20, 184, 166, 0.9));
+          color: #02111f;
+          font-weight: 700;
         }
 
         .secondary {
-          background: var(--accent-soft);
+          background: rgba(14, 25, 42, 0.9);
+          border-color: rgba(94, 234, 212, 0.18);
           color: var(--accent);
         }
 
@@ -562,13 +922,16 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
 
         .source-drawer {
           border-radius: 24px;
-          border: 1px solid rgba(148, 163, 184, 0.18);
-          background: rgba(255, 255, 255, 0.72);
+          border: 1px solid rgba(94, 234, 212, 0.14);
+          background:
+            linear-gradient(180deg, rgba(10, 19, 33, 0.9), rgba(7, 14, 24, 0.86));
           overflow: hidden;
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
         }
 
         .source-drawer[open] {
-          background: rgba(255, 255, 255, 0.82);
+          background:
+            linear-gradient(180deg, rgba(11, 22, 38, 0.94), rgba(7, 14, 24, 0.9));
         }
 
         .source-drawer-summary {
@@ -608,9 +971,9 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           min-width: 148px;
           padding: 10px 14px;
           border-radius: 999px;
-          border: 1px solid rgba(15, 118, 110, 0.18);
-          background: rgba(15, 118, 110, 0.08);
-          color: var(--accent);
+          border: 1px solid rgba(94, 234, 212, 0.18);
+          background: rgba(56, 189, 248, 0.1);
+          color: var(--ink-strong);
           font-size: 13px;
           text-align: center;
         }
@@ -632,8 +995,9 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
         .preset-card,
         .preset-launcher {
           border-radius: 22px;
-          border: 1px solid rgba(148, 163, 184, 0.22);
-          background: rgba(255, 255, 255, 0.82);
+          border: 1px solid rgba(100, 116, 139, 0.2);
+          background:
+            linear-gradient(180deg, rgba(12, 23, 39, 0.88), rgba(7, 14, 24, 0.82));
           padding: 16px;
           display: grid;
           gap: 10px;
@@ -643,8 +1007,8 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
         .preset-card:hover,
         .preset-launcher:hover {
           transform: translateY(-2px);
-          box-shadow: 0 18px 28px rgba(31, 41, 55, 0.08);
-          border-color: rgba(15, 118, 110, 0.24);
+          box-shadow: 0 18px 36px rgba(2, 8, 23, 0.32);
+          border-color: rgba(94, 234, 212, 0.26);
         }
 
         .preset-card h3,
@@ -677,7 +1041,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           font-size: 12px;
           letter-spacing: 0.08em;
           text-transform: uppercase;
-          color: var(--gold);
+          color: rgba(165, 243, 252, 0.82);
         }
 
         .preset-excerpt,
@@ -698,17 +1062,213 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
         .status-chip {
           display: inline-flex;
           align-items: center;
-          gap: 8px;
-          padding: 8px 12px;
-          border-radius: 999px;
-          background: rgba(15, 118, 110, 0.1);
+          gap: 12px;
+          min-width: 236px;
+          padding: 10px 14px;
+          border-radius: 22px;
+          border: 1px solid rgba(94, 234, 212, 0.16);
+          background:
+            linear-gradient(180deg, rgba(8, 18, 30, 0.96), rgba(6, 12, 22, 0.9));
           color: var(--accent);
           font-size: 14px;
+          box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.03),
+            0 16px 32px rgba(2, 8, 23, 0.18);
         }
 
-        .status-chip.failed {
-          background: rgba(185, 28, 28, 0.1);
+        .status-chip[data-status-tone="ready"] {
+          border-color: rgba(140, 198, 255, 0.2);
+          color: var(--accent-strong);
+        }
+
+        .status-chip[data-status-tone="running"] {
+          border-color: rgba(94, 234, 212, 0.34);
+          box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.04),
+            0 20px 38px rgba(5, 150, 105, 0.16);
+        }
+
+        .status-chip[data-status-tone="completed"] {
+          border-color: rgba(52, 211, 153, 0.32);
+          color: #a7f3d0;
+        }
+
+        .status-chip[data-status-tone="failed"] {
+          border-color: rgba(251, 113, 133, 0.22);
+          background:
+            linear-gradient(180deg, rgba(43, 11, 18, 0.94), rgba(24, 7, 12, 0.9));
           color: var(--danger);
+        }
+
+        .status-chip-icon {
+          width: 34px;
+          height: 34px;
+          border-radius: 12px;
+          flex: 0 0 auto;
+          position: relative;
+          background: rgba(94, 234, 212, 0.12);
+          border: 1px solid rgba(94, 234, 212, 0.2);
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+        }
+
+        .status-chip-icon::before,
+        .status-chip-icon::after {
+          content: "";
+          position: absolute;
+        }
+
+        .status-chip-icon[data-status-icon="idle"]::before {
+          inset: 10px;
+          border-radius: 999px;
+          border: 2px solid currentColor;
+          opacity: 0.52;
+        }
+
+        .status-chip-icon[data-status-icon="ready"]::before {
+          left: 9px;
+          top: 8px;
+          width: 14px;
+          height: 14px;
+          border-radius: 50%;
+          background: currentColor;
+          box-shadow: 0 0 0 6px rgba(140, 198, 255, 0.12);
+        }
+
+        .status-chip-icon[data-status-icon="running"]::before {
+          inset: 7px;
+          border-radius: 50%;
+          border: 2px solid rgba(134, 231, 212, 0.22);
+          border-top-color: currentColor;
+          animation: status-spin 1s linear infinite;
+        }
+
+        .status-chip-icon[data-status-icon="running"]::after {
+          inset: 12px;
+          border-radius: 50%;
+          background: currentColor;
+          animation: status-pulse 1.2s ease-in-out infinite;
+        }
+
+        .status-chip-icon[data-status-icon="completed"]::before {
+          left: 9px;
+          top: 9px;
+          width: 15px;
+          height: 9px;
+          border-left: 3px solid currentColor;
+          border-bottom: 3px solid currentColor;
+          transform: rotate(-45deg);
+        }
+
+        .status-chip-icon[data-status-icon="failed"]::before,
+        .status-chip-icon[data-status-icon="failed"]::after {
+          left: 15px;
+          top: 8px;
+          width: 3px;
+          height: 16px;
+          border-radius: 999px;
+          background: currentColor;
+        }
+
+        .status-chip-icon[data-status-icon="failed"]::before {
+          transform: rotate(45deg);
+        }
+
+        .status-chip-icon[data-status-icon="failed"]::after {
+          transform: rotate(-45deg);
+        }
+
+        .status-chip-copy {
+          display: grid;
+          gap: 2px;
+          min-width: 0;
+        }
+
+        .status-chip-label {
+          color: var(--ink-strong);
+          font-size: 14px;
+          line-height: 1.1;
+        }
+
+        .status-chip[data-status-tone="completed"] .status-chip-label {
+          color: #d1fae5;
+        }
+
+        .status-chip[data-status-tone="failed"] .status-chip-label {
+          color: #ffe4e6;
+        }
+
+        .status-chip-meta {
+          color: var(--muted);
+          font-size: 12px;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+        }
+
+        .status-chip-progress {
+          margin-left: auto;
+          width: 84px;
+          height: 8px;
+          border-radius: 999px;
+          overflow: hidden;
+          background: rgba(148, 163, 184, 0.14);
+          position: relative;
+          flex: 0 0 auto;
+        }
+
+        .status-chip-progress-fill {
+          display: block;
+          height: 100%;
+          width: 0;
+          border-radius: inherit;
+          background: linear-gradient(90deg, rgba(56, 189, 248, 0.94), rgba(94, 234, 212, 0.94));
+          transition: width 240ms ease;
+        }
+
+        .status-chip[data-status-tone="running"] .status-chip-progress-fill {
+          background:
+            linear-gradient(90deg, rgba(56, 189, 248, 0.94), rgba(94, 234, 212, 0.94), rgba(56, 189, 248, 0.94));
+          background-size: 200% 100%;
+          animation: status-shimmer 1.6s linear infinite;
+        }
+
+        .status-chip[data-status-tone="completed"] .status-chip-progress-fill {
+          background: linear-gradient(90deg, rgba(16, 185, 129, 0.96), rgba(110, 231, 183, 0.96));
+        }
+
+        .status-chip[data-status-tone="failed"] .status-chip-progress-fill {
+          background: linear-gradient(90deg, rgba(251, 113, 133, 0.94), rgba(244, 63, 94, 0.94));
+        }
+
+        @keyframes status-spin {
+          from {
+            transform: rotate(0deg);
+          }
+
+          to {
+            transform: rotate(360deg);
+          }
+        }
+
+        @keyframes status-pulse {
+          0%, 100% {
+            transform: scale(0.88);
+            opacity: 0.78;
+          }
+
+          50% {
+            transform: scale(1);
+            opacity: 1;
+          }
+        }
+
+        @keyframes status-shimmer {
+          from {
+            background-position: 200% 0;
+          }
+
+          to {
+            background-position: -200% 0;
+          }
         }
 
         .stage-grid {
@@ -720,35 +1280,37 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
 
         .stage-card, .evidence-card {
           border-radius: 22px;
-          border: 1px solid rgba(148, 163, 184, 0.22);
-          background: rgba(255, 255, 255, 0.82);
+          border: 1px solid var(--line);
+          background: rgba(9, 18, 31, 0.86);
           padding: 16px;
         }
 
         .stage-card[data-status="running"] {
-          border-color: rgba(15, 118, 110, 0.4);
-          background: rgba(15, 118, 110, 0.08);
+          border-color: rgba(94, 234, 212, 0.36);
+          background: linear-gradient(180deg, rgba(12, 28, 42, 0.92), rgba(8, 16, 28, 0.9));
+          box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.08), 0 18px 28px rgba(8, 15, 28, 0.24);
         }
 
         .stage-card[data-status="completed"] {
-          border-color: rgba(15, 118, 110, 0.28);
+          border-color: rgba(34, 197, 94, 0.22);
         }
 
         .stage-card[data-status="failed"] {
-          border-color: rgba(185, 28, 28, 0.28);
-          background: rgba(185, 28, 28, 0.06);
+          border-color: rgba(251, 113, 133, 0.24);
+          background: rgba(43, 11, 18, 0.82);
         }
 
         .stage-label {
           font-size: 13px;
           letter-spacing: 0.08em;
           text-transform: uppercase;
-          color: var(--gold);
+          color: rgba(125, 211, 252, 0.82);
         }
 
         .stage-status {
           margin-top: 8px;
           font-size: 20px;
+          color: var(--ink-strong);
         }
 
         .evidence-grid {
@@ -762,12 +1324,37 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
         .graph-surface {
           margin-top: 18px;
           border-radius: 22px;
-          border: 1px solid rgba(148, 163, 184, 0.22);
+          border: 1px solid rgba(134, 231, 212, 0.16);
           background:
-            radial-gradient(circle at top left, rgba(15, 118, 110, 0.08), transparent 10rem),
-            rgba(255, 255, 255, 0.82);
+            radial-gradient(circle at 16% 18%, rgba(140, 198, 255, 0.16), transparent 10rem),
+            radial-gradient(circle at 84% 12%, rgba(134, 231, 212, 0.14), transparent 10rem),
+            linear-gradient(180deg, rgba(7, 13, 24, 0.94), rgba(5, 9, 18, 0.92));
           min-height: 260px;
           padding: 18px;
+          position: relative;
+          overflow: hidden;
+          box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.04),
+            0 18px 34px rgba(2, 8, 23, 0.22);
+        }
+
+        .graph-preview::before,
+        .graph-surface::before {
+          content: "";
+          position: absolute;
+          inset: 0;
+          pointer-events: none;
+          background:
+            linear-gradient(rgba(148, 163, 184, 0.06) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(148, 163, 184, 0.06) 1px, transparent 1px);
+          background-size: 34px 34px;
+          mask-image: radial-gradient(circle at center, black, transparent 92%);
+        }
+
+        .graph-preview > *,
+        .graph-surface > * {
+          position: relative;
+          z-index: 1;
         }
 
         .graph-preview svg,
@@ -785,8 +1372,50 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           margin-bottom: 14px;
         }
 
+        .graph-preview-meta {
+          display: grid;
+          gap: 4px;
+        }
+
+        .graph-preview-note {
+          margin: 0;
+          color: var(--muted);
+          font-size: 13px;
+          line-height: 1.45;
+        }
+
+        .graph-controls {
+          display: flex;
+          align-items: center;
+          justify-content: flex-end;
+          gap: 8px;
+          flex-wrap: wrap;
+          margin-left: auto;
+        }
+
         .graph-expand-button {
           white-space: nowrap;
+        }
+
+        .graph-zoom-button {
+          min-width: 42px;
+          padding: 10px 12px;
+          font-size: 13px;
+        }
+
+        .graph-zoom-label {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-width: 62px;
+          padding: 9px 12px;
+          border-radius: 999px;
+          border: 1px solid rgba(140, 198, 255, 0.18);
+          background: rgba(5, 11, 20, 0.82);
+          color: var(--ink-strong);
+          font-family: "SFMono-Regular", "Menlo", monospace;
+          font-size: 12px;
+          letter-spacing: 0.06em;
         }
 
         .graph-canvas {
@@ -807,11 +1436,11 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           grid-template-rows: auto minmax(0, 1fr);
           gap: 16px;
           border-radius: 28px;
-          border: 1px solid rgba(148, 163, 184, 0.22);
+          border: 1px solid rgba(94, 234, 212, 0.16);
           background:
-            radial-gradient(circle at top right, rgba(15, 118, 110, 0.12), transparent 14rem),
-            rgba(255, 251, 245, 0.985);
-          box-shadow: 0 24px 64px rgba(15, 23, 42, 0.24);
+            radial-gradient(circle at top right, rgba(56, 189, 248, 0.12), transparent 14rem),
+            linear-gradient(180deg, rgba(9, 18, 31, 0.98), rgba(4, 9, 17, 0.98));
+          box-shadow: 0 24px 64px rgba(2, 8, 23, 0.48);
           padding: 22px;
         }
 
@@ -830,10 +1459,39 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           gap: 12px;
         }
 
+        .graph-list.zoomable {
+          min-height: min(72vh, 820px);
+          align-content: start;
+        }
+
+        .graph-list-body {
+          display: grid;
+          gap: 14px;
+        }
+
+        .graph-list.zoomable .graph-list-body {
+          --graph-list-zoom: 1;
+          transform: scale(var(--graph-list-zoom));
+          transform-origin: top left;
+          width: calc(100% / var(--graph-list-zoom));
+          transition: transform 180ms ease;
+        }
+
+        .graph-list.zoomable .entity-chip {
+          font-size: calc(13px * var(--graph-list-zoom));
+          padding: calc(8px * var(--graph-list-zoom)) calc(12px * var(--graph-list-zoom));
+          margin: 0 calc(8px * var(--graph-list-zoom)) calc(8px * var(--graph-list-zoom)) 0;
+        }
+
         .graph-list ul {
           margin: 0;
           padding-left: 18px;
           color: var(--muted);
+        }
+
+        .graph-list.zoomable ul {
+          padding-left: calc(18px * var(--graph-list-zoom));
+          font-size: calc(15px * var(--graph-list-zoom));
         }
 
         .muted {
@@ -858,8 +1516,8 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
 
         .evidence-item {
           border-radius: 18px;
-          border: 1px solid rgba(148, 163, 184, 0.18);
-          background: rgba(248, 250, 252, 0.88);
+          border: 1px solid rgba(100, 116, 139, 0.18);
+          background: rgba(8, 17, 29, 0.82);
           padding: 14px;
         }
 
@@ -893,10 +1551,11 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           min-width: 0;
           padding: 8px 10px;
           border-radius: 12px;
-          background: rgba(255, 255, 255, 0.96);
-          border: 1px solid rgba(148, 163, 184, 0.18);
+          background: rgba(3, 10, 20, 0.82);
+          border: 1px solid rgba(100, 116, 139, 0.18);
           font-family: "SFMono-Regular", "Menlo", monospace;
           font-size: 12px;
+          color: var(--ink);
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
@@ -905,9 +1564,9 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
         .copy-button {
           padding: 8px 12px;
           border-radius: 999px;
-          border: 1px solid rgba(15, 118, 110, 0.22);
-          background: rgba(15, 118, 110, 0.1);
-          color: var(--accent);
+          border: 1px solid rgba(94, 234, 212, 0.2);
+          background: rgba(56, 189, 248, 0.1);
+          color: var(--ink-strong);
           font-size: 13px;
         }
 
@@ -940,10 +1599,340 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           line-height: 1.6;
         }
 
+        .brand-row {
+          display: flex;
+          align-items: center;
+          gap: 14px;
+          margin-bottom: 10px;
+        }
+
+        .arc-mark {
+          width: 48px;
+          height: 48px;
+          border-radius: 16px;
+          display: grid;
+          place-items: center;
+          overflow: hidden;
+          background: rgba(255, 255, 255, 0.04);
+          border: 1px solid rgba(94, 234, 212, 0.14);
+        }
+
+        .arc-mark img {
+          width: 100%;
+          height: 100%;
+          display: block;
+          object-fit: cover;
+        }
+
+        .arc-brand {
+          display: grid;
+          gap: 2px;
+        }
+
+        .arc-wordmark {
+          font-size: 1.15rem;
+          font-weight: 800;
+          letter-spacing: -0.03em;
+          color: var(--ink-strong);
+        }
+
+        .arc-subtitle {
+          font-size: 12px;
+          letter-spacing: 0.12em;
+          text-transform: uppercase;
+          color: var(--accent);
+        }
+
+        .control-actions {
+          display: inline-flex;
+          align-items: center;
+          gap: 10px;
+          flex-wrap: wrap;
+          justify-content: flex-end;
+        }
+
+        .theme-toggle {
+          width: 48px;
+          height: 48px;
+          min-width: 48px;
+          padding: 0;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 16px;
+          position: relative;
+        }
+
+        .theme-toggle-glyph {
+          width: 22px;
+          height: 22px;
+          position: relative;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .theme-toggle-core,
+        .theme-toggle-halo {
+          position: absolute;
+          inset: 0;
+          border-radius: 999px;
+        }
+
+        .theme-toggle-core {
+          background: linear-gradient(135deg, rgba(248, 250, 252, 0.96), rgba(148, 163, 184, 0.72));
+          box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+        }
+
+        .theme-toggle-core::after {
+          content: "";
+          position: absolute;
+          border-radius: 999px;
+        }
+
+        .theme-toggle-halo::before,
+        .theme-toggle-halo::after {
+          content: "";
+          position: absolute;
+        }
+
+        .theme-toggle[data-theme-icon="moon"] .theme-toggle-core::after {
+          width: 16px;
+          height: 16px;
+          top: -1px;
+          left: 8px;
+          background: rgba(14, 25, 42, 0.94);
+        }
+
+        .theme-toggle[data-theme-icon="moon"] .theme-toggle-halo {
+          opacity: 0;
+        }
+
+        .theme-toggle[data-theme-icon="sun"] .theme-toggle-core {
+          background: linear-gradient(135deg, rgba(253, 230, 138, 0.98), rgba(251, 191, 36, 0.9));
+        }
+
+        .theme-toggle[data-theme-icon="sun"] .theme-toggle-core::after {
+          inset: 4px;
+          background: rgba(253, 230, 138, 0.98);
+          box-shadow: 0 0 16px rgba(251, 191, 36, 0.34);
+        }
+
+        .theme-toggle[data-theme-icon="sun"] .theme-toggle-halo::before,
+        .theme-toggle[data-theme-icon="sun"] .theme-toggle-halo::after {
+          inset: -5px;
+          border-radius: 999px;
+          border: 1px solid rgba(251, 191, 36, 0.34);
+        }
+
+        .theme-toggle[data-theme-icon="sun"] .theme-toggle-halo::before {
+          transform: scale(1.12);
+        }
+
+        .theme-toggle[data-theme-icon="sun"] .theme-toggle-halo::after {
+          transform: scale(1.36);
+          opacity: 0.64;
+        }
+
+        .trial-link-section {
+          display: grid;
+          gap: 10px;
+        }
+
+        .trial-link-grid {
+          display: grid;
+          gap: 10px;
+        }
+
+        .trial-link-card {
+          display: grid;
+          gap: 8px;
+          padding: 14px 16px;
+          border-radius: 18px;
+          border: 1px solid rgba(94, 234, 212, 0.16);
+          background: rgba(7, 14, 24, 0.82);
+          color: var(--ink-strong);
+          text-decoration: none;
+          transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+        }
+
+        .control-stepper {
+          margin-top: 14px;
+          display: grid;
+          grid-template-columns: repeat(5, minmax(0, 1fr));
+          gap: 10px;
+          align-items: start;
+        }
+
+        .control-step {
+          display: grid;
+          gap: 8px;
+          min-width: 0;
+        }
+
+        .control-step-marker {
+          display: flex;
+          align-items: center;
+          min-width: 0;
+        }
+
+        .control-step-dot {
+          width: 12px;
+          height: 12px;
+          border-radius: 999px;
+          flex: 0 0 auto;
+          border: 2px solid rgba(148, 163, 184, 0.4);
+          background: rgba(8, 18, 30, 0.6);
+          position: relative;
+        }
+
+        .control-step-line {
+          height: 2px;
+          flex: 1 1 auto;
+          margin-left: 8px;
+          border-radius: 999px;
+          background: rgba(148, 163, 184, 0.18);
+          overflow: hidden;
+        }
+
+        .control-step-line::after {
+          content: "";
+          display: block;
+          width: 0;
+          height: 100%;
+          border-radius: inherit;
+          background: linear-gradient(90deg, rgba(56, 189, 248, 0.92), rgba(94, 234, 212, 0.92));
+          transition: width 220ms ease;
+        }
+
+        .control-step[data-stage-status="completed"] .control-step-dot {
+          border-color: rgba(52, 211, 153, 0.44);
+          background: rgba(16, 185, 129, 0.94);
+          box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.12);
+        }
+
+        .control-step[data-stage-status="completed"] .control-step-dot::after {
+          content: "";
+          position: absolute;
+          left: 2px;
+          top: 1px;
+          width: 3px;
+          height: 5px;
+          border-right: 2px solid #032015;
+          border-bottom: 2px solid #032015;
+          transform: rotate(45deg);
+        }
+
+        .control-step[data-stage-status="completed"] .control-step-line::after {
+          width: 100%;
+          background: linear-gradient(90deg, rgba(16, 185, 129, 0.94), rgba(94, 234, 212, 0.9));
+        }
+
+        .control-step[data-stage-status="running"] .control-step-dot {
+          border-color: rgba(94, 234, 212, 0.48);
+          background: rgba(56, 189, 248, 0.94);
+          box-shadow: 0 0 0 5px rgba(56, 189, 248, 0.12);
+          animation: control-step-pulse 1.25s ease-in-out infinite;
+        }
+
+        .control-step[data-stage-status="running"] .control-step-line::after {
+          width: 58%;
+          background:
+            linear-gradient(90deg, rgba(56, 189, 248, 0.94), rgba(94, 234, 212, 0.94), rgba(56, 189, 248, 0.94));
+          background-size: 200% 100%;
+          animation: status-shimmer 1.6s linear infinite;
+        }
+
+        .control-step[data-stage-status="failed"] .control-step-dot {
+          border-color: rgba(251, 113, 133, 0.48);
+          background: rgba(244, 63, 94, 0.94);
+          box-shadow: 0 0 0 4px rgba(244, 63, 94, 0.12);
+        }
+
+        .control-step[data-stage-status="failed"] .control-step-dot::before,
+        .control-step[data-stage-status="failed"] .control-step-dot::after {
+          content: "";
+          position: absolute;
+          left: 3px;
+          top: 0;
+          width: 2px;
+          height: 8px;
+          border-radius: 999px;
+          background: #2a0a10;
+        }
+
+        .control-step[data-stage-status="failed"] .control-step-dot::before {
+          transform: rotate(45deg);
+        }
+
+        .control-step[data-stage-status="failed"] .control-step-dot::after {
+          transform: rotate(-45deg);
+        }
+
+        .control-step-name {
+          font-size: 11px;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          color: rgba(148, 163, 184, 0.88);
+          line-height: 1.4;
+        }
+
+        .control-step[data-stage-status="running"] .control-step-name,
+        .control-step[data-stage-status="completed"] .control-step-name {
+          color: var(--ink-strong);
+        }
+
+        .control-step[data-stage-status="failed"] .control-step-name {
+          color: #ffe4e6;
+        }
+
+        @keyframes control-step-pulse {
+          0%, 100% {
+            transform: scale(0.92);
+          }
+
+          50% {
+            transform: scale(1);
+          }
+        }
+
+        .trial-link-card:hover {
+          transform: translateY(-1px);
+          box-shadow: 0 16px 28px rgba(2, 8, 23, 0.2);
+          border-color: rgba(94, 234, 212, 0.3);
+        }
+
+        .trial-link-actions {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px;
+          align-items: center;
+        }
+
+        .trial-open-link {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          text-decoration: none;
+        }
+
+        .trial-link-source {
+          font-size: 12px;
+          letter-spacing: 0.12em;
+          text-transform: uppercase;
+          color: var(--accent);
+        }
+
+        .trial-link-url {
+          font-size: 12px;
+          color: var(--muted);
+          word-break: break-all;
+        }
+
         .workbench-grid {
           display: grid;
-          grid-template-columns: minmax(0, 1.55fr) minmax(300px, 0.78fr);
-          gap: 18px;
+          grid-template-columns: minmax(0, 1.68fr) minmax(320px, 0.74fr);
+          gap: 20px;
         }
 
         .workbench-main,
@@ -965,18 +1954,21 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
         .judgment-card,
         .evidence-card {
           border-radius: 24px;
-          border: 1px solid rgba(148, 163, 184, 0.22);
-          background: rgba(255, 255, 255, 0.82);
-          padding: 18px;
+          border: 1px solid var(--line);
+          background: linear-gradient(180deg, rgba(10, 19, 33, 0.9), rgba(7, 14, 24, 0.86));
+          padding: 20px;
           position: relative;
           overflow: hidden;
-          box-shadow: 0 14px 28px rgba(31, 41, 55, 0.05);
+          box-shadow: 0 18px 36px rgba(2, 8, 23, 0.26);
         }
 
         .overview-card {
           background:
-            radial-gradient(circle at top right, rgba(15, 118, 110, 0.12), transparent 14rem),
-            linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(248, 250, 252, 0.9));
+            radial-gradient(circle at top right, rgba(56, 189, 248, 0.16), transparent 12rem),
+            radial-gradient(circle at bottom left, rgba(14, 116, 144, 0.12), transparent 18rem),
+            linear-gradient(180deg, rgba(10, 22, 38, 0.98), rgba(6, 13, 24, 0.92));
+          border-color: rgba(94, 234, 212, 0.18);
+          padding: 24px;
         }
 
         .overview-card::before,
@@ -989,28 +1981,30 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           left: 0;
           right: 0;
           height: 1px;
-          background: linear-gradient(90deg, rgba(180, 83, 9, 0.66), rgba(15, 118, 110, 0.66), transparent);
+          background: linear-gradient(90deg, rgba(56, 189, 248, 0.8), rgba(94, 234, 212, 0.7), transparent);
         }
 
         .section-kicker {
           font-size: 12px;
           letter-spacing: 0.14em;
           text-transform: uppercase;
-          color: var(--gold);
+          color: rgba(125, 211, 252, 0.88);
           margin-bottom: 10px;
         }
 
         .overview-card h3 {
           margin: 0 0 10px;
-          font-size: clamp(1.4rem, 2.8vw, 2.3rem);
-          line-height: 1.05;
+          font-size: clamp(1.72rem, 3vw, 2.68rem);
+          line-height: 1.02;
+          letter-spacing: -0.04em;
+          color: var(--ink-strong);
         }
 
         .overview-card p {
           margin: 0;
           color: var(--muted);
           font-size: 16px;
-          line-height: 1.78;
+          line-height: 1.82;
         }
 
         .metric-grid {
@@ -1023,21 +2017,22 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
         .metric-tile {
           border-radius: 18px;
           padding: 14px;
-          border: 1px solid rgba(148, 163, 184, 0.18);
-          background: rgba(255, 255, 255, 0.92);
+          border: 1px solid rgba(94, 234, 212, 0.12);
+          background: rgba(6, 13, 24, 0.82);
         }
 
         .metric-label {
           font-size: 12px;
           letter-spacing: 0.08em;
           text-transform: uppercase;
-          color: var(--gold);
+          color: rgba(125, 211, 252, 0.78);
           margin-bottom: 8px;
         }
 
         .metric-value {
           font-size: 20px;
           line-height: 1.2;
+          color: var(--ink-strong);
         }
 
         .judgment-grid {
@@ -1054,8 +2049,8 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
 
         .judgment-card {
           background:
-            radial-gradient(circle at top right, rgba(180, 83, 9, 0.08), transparent 12rem),
-            linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(250, 250, 249, 0.92));
+            radial-gradient(circle at top right, rgba(56, 189, 248, 0.1), transparent 12rem),
+            linear-gradient(180deg, rgba(10, 19, 33, 0.94), rgba(8, 16, 28, 0.9));
         }
 
         .judgment-card p,
@@ -1065,6 +2060,12 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           color: var(--muted);
           font-size: 16px;
           line-height: 1.72;
+        }
+
+        .judgment-card h3,
+        .sidebar-card h3,
+        .evidence-card h3 {
+          color: var(--ink-strong);
         }
 
         .judgment-meta {
@@ -1079,7 +2080,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           align-items: center;
           padding: 6px 10px;
           border-radius: 999px;
-          background: rgba(15, 118, 110, 0.1);
+          background: rgba(56, 189, 248, 0.12);
           color: var(--accent);
           font-size: 12px;
         }
@@ -1088,8 +2089,8 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           margin-top: 12px;
           padding: 14px;
           border-radius: 18px;
-          background: rgba(248, 250, 252, 0.96);
-          border: 1px solid rgba(148, 163, 184, 0.18);
+          background: rgba(3, 10, 20, 0.82);
+          border: 1px solid rgba(100, 116, 139, 0.18);
           color: var(--ink);
           line-height: 1.7;
         }
@@ -1112,8 +2113,8 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           align-items: center;
           padding: 8px 12px;
           border-radius: 999px;
-          background: rgba(180, 83, 9, 0.1);
-          color: var(--gold);
+          background: rgba(56, 189, 248, 0.1);
+          color: var(--ink-strong);
           font-size: 13px;
           margin: 0 8px 8px 0;
         }
@@ -1131,16 +2132,16 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
 
         .deep-reading-card {
           border-radius: 24px;
-          border: 1px solid rgba(148, 163, 184, 0.22);
+          border: 1px solid var(--line);
           background:
-            linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(249, 247, 242, 0.92));
+            linear-gradient(180deg, rgba(10, 19, 33, 0.92), rgba(7, 14, 24, 0.9));
           padding: 20px;
-          box-shadow: 0 14px 28px rgba(31, 41, 55, 0.05);
+          box-shadow: 0 18px 36px rgba(2, 8, 23, 0.24);
         }
 
         .deep-reading-card p {
           margin: 0;
-          color: var(--ink);
+          color: rgba(226, 232, 240, 0.92);
           font-size: 16px;
           line-height: 1.82;
           white-space: pre-wrap;
@@ -1156,7 +2157,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           display: grid;
           gap: 8px;
           padding-top: 14px;
-          border-top: 1px solid rgba(148, 163, 184, 0.16);
+          border-top: 1px solid rgba(100, 116, 139, 0.16);
         }
 
         .deep-reading-block:first-child {
@@ -1169,7 +2170,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           font-size: 14px;
           letter-spacing: 0.08em;
           text-transform: uppercase;
-          color: var(--gold);
+          color: rgba(125, 211, 252, 0.8);
         }
 
         .deep-reading-meta {
@@ -1180,14 +2181,14 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
         }
 
         .credential-list .evidence-item {
-          background: rgba(248, 250, 252, 0.92);
+          background: rgba(5, 12, 22, 0.84);
         }
 
         .meta-section {
           display: grid;
           gap: 10px;
           padding-top: 10px;
-          border-top: 1px solid rgba(148, 163, 184, 0.16);
+          border-top: 1px solid rgba(100, 116, 139, 0.16);
         }
 
         .meta-section:first-child {
@@ -1210,8 +2211,8 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
         .detail-scrim {
           position: absolute;
           inset: 0;
-          background: rgba(15, 23, 42, 0.44);
-          backdrop-filter: blur(8px);
+          background: rgba(2, 8, 23, 0.62);
+          backdrop-filter: blur(12px);
         }
 
         .detail-panel {
@@ -1221,11 +2222,11 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           width: min(480px, 42vw);
           height: 100vh;
           overflow: auto;
-          border-left: 1px solid rgba(148, 163, 184, 0.22);
+          border-left: 1px solid rgba(94, 234, 212, 0.16);
           background:
-            radial-gradient(circle at top right, rgba(15, 118, 110, 0.12), transparent 12rem),
-            rgba(255, 251, 245, 0.985);
-          box-shadow: -16px 0 48px rgba(15, 23, 42, 0.2);
+            radial-gradient(circle at top right, rgba(56, 189, 248, 0.12), transparent 12rem),
+            linear-gradient(180deg, rgba(9, 18, 31, 0.98), rgba(4, 9, 17, 0.98));
+          box-shadow: -16px 0 48px rgba(2, 8, 23, 0.44);
           padding: 22px;
         }
 
@@ -1239,6 +2240,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
         .detail-panel-top h2 {
           margin: 0;
           font-size: clamp(1.5rem, 3vw, 2rem);
+          color: var(--ink-strong);
         }
 
         .detail-panel-body {
@@ -1251,8 +2253,8 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           display: grid;
           gap: 10px;
           border-radius: 22px;
-          border: 1px solid rgba(148, 163, 184, 0.18);
-          background: rgba(255, 255, 255, 0.78);
+          border: 1px solid rgba(100, 116, 139, 0.18);
+          background: rgba(8, 17, 29, 0.84);
           padding: 16px;
         }
 
@@ -1273,8 +2275,8 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           margin: 0;
           padding: 16px 18px;
           border-radius: 18px;
-          border: 1px solid rgba(148, 163, 184, 0.18);
-          background: rgba(255, 255, 255, 0.94);
+          border: 1px solid rgba(100, 116, 139, 0.18);
+          background: rgba(3, 10, 20, 0.84);
           color: var(--ink);
           font-size: 16px;
           line-height: 1.82;
@@ -1302,7 +2304,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           font-size: 12px;
           letter-spacing: 0.08em;
           text-transform: uppercase;
-          color: var(--gold);
+          color: rgba(125, 211, 252, 0.8);
         }
 
         .detail-context-grid {
@@ -1314,8 +2316,8 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           display: grid;
           gap: 6px;
           border-radius: 18px;
-          border: 1px solid rgba(148, 163, 184, 0.18);
-          background: rgba(248, 250, 252, 0.92);
+          border: 1px solid rgba(100, 116, 139, 0.18);
+          background: rgba(5, 12, 22, 0.84);
           padding: 14px;
         }
 
@@ -1331,9 +2333,9 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           justify-content: center;
           border-radius: 999px;
           padding: 10px 14px;
-          border: 1px solid rgba(15, 118, 110, 0.22);
-          background: rgba(15, 118, 110, 0.1);
-          color: var(--accent);
+          border: 1px solid rgba(94, 234, 212, 0.22);
+          background: rgba(56, 189, 248, 0.1);
+          color: var(--ink-strong);
           text-decoration: none;
           cursor: pointer;
         }
@@ -1371,6 +2373,10 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
             grid-template-columns: repeat(2, minmax(0, 1fr));
           }
 
+          .control-stepper {
+            grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+          }
+
           .control-card-wide {
             grid-column: span 2;
           }
@@ -1386,6 +2392,10 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
         @media (max-width: 940px) {
           .layout {
             grid-template-columns: 1fr;
+          }
+
+          .control-stepper {
+            grid-template-columns: repeat(auto-fit, minmax(88px, 1fr));
           }
 
           .control-grid {
@@ -1438,38 +2448,115 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
       </style>
     </head>
     <body>
-      <main>
-        <section class="panel control-strip toolbelt-shell">
-          <div class="section-kicker">顶部工具带</div>
+      <main class="command-center">
+        <section class="panel control-strip toolbelt-shell command-deck">
+          <div class="section-kicker">决策总览</div>
           <div class="workbench-top">
             <div>
-              <h1>可信投研工作台</h1>
-              <p id="control-summary">页面状态：待导入 / 待分析 / 分析中 / 分析完成 / 分析失败。首屏固定服务“事件总览 -> 关键判断 -> 证据摘录”，证据摘录会固定留在主区。导入状态：实时抓取 / 导入状态：缓存回退 / 缓存时间 会在来源状态与分析元信息里持续可见。</p>
+              <div class="brand-row">
+                <div class="arc-mark" aria-hidden="true">
+                  <img src="${LIVE_BRAND_LOGO_URL}" alt="" />
+                </div>
+                <div class="arc-brand">
+                  <span class="arc-wordmark">Arc</span>
+                  <span class="arc-subtitle">The Economic OS</span>
+                </div>
+              </div>
+              <h1>Arc Signal Desk</h1>
+              <p id="control-summary">状态卡和执行轨迹会随当前分析自动更新。</p>
               <p id="control-phase" class="mode-note">阶段：尚未进入分析阶段</p>
+              <div id="control-stepper" class="control-stepper" aria-label="分析阶段">
+                <div id="control-step-create" class="control-step" data-stage-key="create" data-stage-status="pending">
+                  <div class="control-step-marker">
+                    <span class="control-step-dot" aria-hidden="true"></span>
+                    <span class="control-step-line" aria-hidden="true"></span>
+                  </div>
+                  <span class="control-step-name">创建会话</span>
+                </div>
+                <div id="control-step-summary" class="control-step" data-stage-key="summary" data-stage-status="pending">
+                  <div class="control-step-marker">
+                    <span class="control-step-dot" aria-hidden="true"></span>
+                    <span class="control-step-line" aria-hidden="true"></span>
+                  </div>
+                  <span class="control-step-name">事件判断</span>
+                </div>
+                <div id="control-step-entities" class="control-step" data-stage-key="entities" data-stage-status="pending">
+                  <div class="control-step-marker">
+                    <span class="control-step-dot" aria-hidden="true"></span>
+                    <span class="control-step-line" aria-hidden="true"></span>
+                  </div>
+                  <span class="control-step-name">主体抽取</span>
+                </div>
+                <div id="control-step-relations" class="control-step" data-stage-key="relations" data-stage-status="pending">
+                  <div class="control-step-marker">
+                    <span class="control-step-dot" aria-hidden="true"></span>
+                    <span class="control-step-line" aria-hidden="true"></span>
+                  </div>
+                  <span class="control-step-name">关系整理</span>
+                </div>
+                <div id="control-step-graph" class="control-step" data-stage-key="graph" data-stage-status="pending">
+                  <div class="control-step-marker">
+                    <span class="control-step-dot" aria-hidden="true"></span>
+                  </div>
+                  <span class="control-step-name">结果归档</span>
+                </div>
+              </div>
             </div>
-            <div id="overall-status" class="status-chip">待导入</div>
+            <div class="control-actions">
+              <button
+                id="theme-toggle"
+                class="secondary theme-toggle"
+                type="button"
+                aria-label="切换到夜航"
+                title="切换到夜航"
+                data-theme-icon="moon"
+              >
+                <span class="theme-toggle-glyph" aria-hidden="true">
+                  <span class="theme-toggle-core"></span>
+                  <span class="theme-toggle-halo"></span>
+                </span>
+              </button>
+              <div id="overall-status" class="status-chip" data-status-tone="idle" aria-live="polite">
+                <span id="overall-status-icon" class="status-chip-icon" data-status-icon="idle" aria-hidden="true"></span>
+                <span class="status-chip-copy">
+                  <strong id="overall-status-label" class="status-chip-label">待导入</strong>
+                  <span id="overall-status-meta" class="status-chip-meta">0 / 5 阶段</span>
+                </span>
+                <span
+                  id="overall-status-progressbar"
+                  class="status-chip-progress"
+                  role="progressbar"
+                  aria-label="分析进度"
+                  aria-valuemin="0"
+                  aria-valuemax="100"
+                  aria-valuenow="0"
+                >
+                  <span id="overall-status-progress" class="status-chip-progress-fill" style="width:0%"></span>
+                </span>
+              </div>
+            </div>
           </div>
           <div class="control-grid toolbelt-actions">
-            <article class="control-card">
+            <article id="control-card-current-object" class="control-card" data-card-tone="idle">
               <div class="control-label">当前对象</div>
               <div id="control-current-object" class="control-value">等待分析开始</div>
             </article>
-            <article class="control-card">
+            <article id="control-card-source-status" class="control-card" data-card-tone="idle">
               <div class="control-label">来源状态</div>
               <div id="control-source-status" class="control-value">待导入</div>
             </article>
-            <article class="control-card">
+            <article id="control-card-run-status" class="control-card" data-card-tone="idle">
               <div class="control-label">运行状态</div>
               <div id="control-run-status" class="control-value">待导入 · 尚未进入分析阶段</div>
             </article>
-            <article class="control-card">
+            <article id="control-card-credential-status" class="control-card" data-card-tone="idle">
               <div class="control-label">凭证状态</div>
               <div id="control-credential-status" class="control-value">待生成凭证</div>
             </article>
-            <article class="control-card control-card-wide">
+            <article id="control-card-next-action" class="control-card control-card-wide" data-card-tone="idle">
               <div class="control-label">下一步动作</div>
               <div id="control-next-action" class="control-value">导入材料</div>
-              <p id="control-next-action-hint" class="mode-note">从导入仓开始一次新分析。</p>
+              <p id="control-next-action-hint" class="mode-note">从线索入口开始一次新分析。</p>
             </article>
           </div>
         </section>
@@ -1479,11 +2566,11 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
             <details id="source-drawer" class="source-drawer">
               <summary class="source-drawer-summary" data-testid="source-drawer-toggle">
                 <div class="source-drawer-copy">
-                  <div class="section-kicker">导入仓</div>
-                  <h2>收纳式导入仓</h2>
-                  <p>输入入口默认退入工具行为。需要更换材料时，再展开导入来源、手动文本与预置启动器。</p>
+                  <div class="section-kicker">线索入口</div>
+                  <h2>线索入口</h2>
+                  <p>输入入口默认退入次要操作。需要更换材料时，再展开来源输入、手动文本与预置启动器。</p>
                 </div>
-                <span class="source-drawer-toggle">展开导入来源</span>
+                <span class="source-drawer-toggle">展开线索入口</span>
               </summary>
               <div class="source-drawer-grid input-grid">
                 <label>
@@ -1524,21 +2611,29 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
 
                 <section class="section-heading">
                   <h3>预置资讯启动器</h3>
-                  <p class="muted">预置资讯只作为启动器使用。先看摘要与原始片段，再决定是否直接启动分析。</p>
+                  <p class="muted">动态优先加载 Arc 相关资讯，失败时回退到本地预置样本。先看摘要与原始片段，再决定是否直接启动分析。</p>
                 </section>
                 <section class="preset-grid preset-launcher-grid">${presetCards}</section>
+
+                <section class="trial-link-section">
+                  <div class="section-heading">
+                    <h3>推荐试跑链接</h3>
+                    <p class="muted">这些链接已经在当前解析器上验证过，可直接粘贴到文章链接模式进行试跑。</p>
+                  </div>
+                  <div class="trial-link-grid">${recommendedTrialCards}</div>
+                </section>
               </div>
             </details>
           </article>
 
-          <article class="panel result-panel">
+          <article class="panel result-panel workbench-shell">
             <section class="workbench-grid" aria-live="polite">
               <div class="workbench-main main-reading-rail">
                 <article id="overview-card" class="overview-card card-detail-trigger" tabindex="0" role="button">
-                  <div class="section-kicker">事件总览</div>
+                  <div class="section-kicker">执行摘要</div>
                   <div class="card-detail-hint">完整摘要</div>
                   <h3 id="event-headline">等待分析开始</h3>
-                  <p id="event-summary">选择一条资讯后，系统会先生成事件判断，再补全主体、证据和分析凭证。</p>
+                  <p id="event-summary">选择一条资讯后，系统会先生成执行摘要，再补全主体、证据和调用凭证。</p>
                   <div id="event-metrics" class="metric-grid">
                     <article class="metric-tile">
                       <div class="metric-label">事件类型</div>
@@ -1561,12 +2656,12 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
 
                 <section>
                   <div class="section-heading">
-                    <h3>关键判断</h3>
-                    <p class="muted">每条判断都应回答“为什么重要”。关键判断需要证据挂钩；没有证据锚点时，判断卡会先保留为待核验提示。</p>
+                    <h3>核心结论</h3>
+                    <p class="muted">每条结论都应回答“为什么重要”。核心结论需要证据挂钩；没有证据锚点时，结论卡会先保留为待核验提示。</p>
                   </div>
                   <div id="judgment-list" class="judgment-grid">
                     <article class="judgment-card">
-                      <div class="section-kicker">关键判断</div>
+                      <div class="section-kicker">核心结论</div>
                       <h3>等待事件判断生成</h3>
                       <p>summary 完成后，这里会优先出现 2-3 条可继续跟进的结论。</p>
                     </article>
@@ -1575,15 +2670,15 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
 
                 <section>
                   <div class="section-heading">
-                    <h3>证据摘录</h3>
-                    <p class="muted">证据摘录会固定留在主区，帮助人工复核判断；暂不宣称已完成逐句证据对齐。</p>
+                    <h3>证据锚点</h3>
+                    <p class="muted">证据锚点会固定留在主区，帮助人工复核结论；暂不宣称已完成逐句证据对齐。</p>
                   </div>
                   <div id="evidence-preview" class="evidence-list muted">尚无可回看的原文证据。</div>
                 </section>
 
                 <section class="deep-reading-section">
                   <div class="section-heading">
-                    <h3>延展阅读</h3>
+                    <h3>深度解读</h3>
                     <p class="muted">完整摘要、延展判断与复核提示会在这里继续展开，不打断首屏的主阅读链。</p>
                   </div>
                   <article class="deep-reading-card">
@@ -1594,38 +2689,37 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
                 </section>
               </div>
 
-              <aside class="workbench-sidebar">
+              <aside class="workbench-sidebar signal-sidebar">
                 <section class="section-heading sidebar-heading">
-                  <h3>情报侧栏</h3>
-                  <p class="muted">右侧保持稳定顺序：导入来源、核心主体、辅助关系图、分析凭证、分析流程，不与主结论区争抢焦点。</p>
+                  <h3>信号侧栏</h3>
                 </section>
 
                 <article class="sidebar-card">
-                  <div class="section-kicker">导入来源</div>
+                  <div class="section-kicker">来源信息</div>
                   <div id="source-preview" class="source-list">
-                    <p class="source-note">可通过链接导入、手动文本或预置样本启动分析，来源方式与导入状态会在这里持续展示。</p>
+                    <p class="source-note">等待来源进入。</p>
                   </div>
                 </article>
 
                 <article class="sidebar-card">
                   <div class="section-kicker">核心主体</div>
-                  <div id="entity-preview" class="entity-list muted">摘要与实体抽取完成后，这里会显示本次最值得关注的主体。</div>
+                  <div id="entity-preview" class="entity-list muted">等待主体返回。</div>
                 </article>
 
                 <article class="sidebar-card graph-card">
-                  <div class="section-kicker">辅助关系图</div>
+                  <div class="section-kicker">关系导航</div>
                   <section id="graph-preview" class="graph-preview graph-surface" aria-live="polite">
-                    <p class="muted">辅助关系图会在这里显示，用于快速扫清主体之间的连接，不承担主结论职责。</p>
+                    <p class="muted">等待关系返回。</p>
                   </section>
                 </article>
 
                 <article class="sidebar-card">
-                  <div class="section-kicker">分析凭证</div>
-                  <div id="credential-preview" class="credential-list muted">payment、receipt 与 payloadHash 会在这里统一展示。</div>
+                  <div class="section-kicker">调用凭证</div>
+                  <div id="credential-preview" class="credential-list muted">等待凭证回填。</div>
                 </article>
 
                 <article class="sidebar-card">
-                  <div class="section-kicker">分析流程</div>
+                  <div class="section-kicker">执行轨迹</div>
                   <div id="stage-grid" class="stage-grid"></div>
                 </article>
               </aside>
@@ -1640,7 +2734,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
               <div>
                 <div id="detail-panel-kicker" class="section-kicker">详情</div>
                 <h2 id="detail-panel-title">卡片详情</h2>
-                <p id="detail-panel-subtitle" class="mode-note">右侧详情抽屉承接延展阅读、证据上下文与后续动作。</p>
+                <p id="detail-panel-subtitle" class="mode-note">右侧详情抽屉承接深度解读、证据上下文与后续动作。</p>
               </div>
               <button id="detail-panel-close" class="secondary" type="button">关闭</button>
             </div>
@@ -1654,7 +2748,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
                 <blockquote id="detail-quote" class="detail-quote"></blockquote>
               </section>
               <section id="detail-judgment-meta-section" class="detail-section hidden">
-                <h3>关键判断详情</h3>
+                <h3>核心结论详情</h3>
                 <div class="detail-meta-list">
                   <div class="detail-meta-row">
                     <strong>判断标签</strong>
@@ -1667,7 +2761,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
                 </div>
               </section>
               <section id="detail-evidence-section" class="detail-section hidden">
-                <h3>证据摘录详情</h3>
+                <h3>证据锚点详情</h3>
                 <div class="detail-context-grid">
                   <div class="detail-context-card">
                     <strong>当前摘录</strong>
@@ -1732,9 +2826,9 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           <section class="graph-modal-panel" role="dialog" aria-modal="true" aria-labelledby="graph-modal-title">
             <div class="detail-panel-top">
               <div>
-                <div class="section-kicker">关系图展开</div>
-                <h2 id="graph-modal-title">辅助关系图</h2>
-                <p class="mode-note">在站内放大查看主体关系，不再跳到独立 URL 页面。</p>
+                <div class="section-kicker">导航展开</div>
+                <h2 id="graph-modal-title">关系导航</h2>
+                <p class="mode-note">在站内放大查看主体关系，支持滚轮和按钮缩放，不再跳到独立 URL 页面。</p>
               </div>
               <button id="graph-modal-close" class="secondary" type="button">关闭</button>
             </div>
@@ -1748,7 +2842,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
         const isLiveSessionTerminalStatus = ${isLiveSessionTerminalStatusSource};
         const createLivePollFailureTracker = ${createLivePollFailureTrackerSource};
         const sample = ${JSON.stringify(sample)};
-        const presets = ${JSON.stringify(liveNewsPresets)};
+        const presets = ${JSON.stringify(presets)};
         const supportedSourceLabels = ${JSON.stringify(SUPPORTED_NEWS_SOURCE_LABELS)};
         const pollFailureTracker = createLivePollFailureTracker();
         const state = {
@@ -1756,6 +2850,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           sessionId: null,
           graphChart: null,
           graphModalChart: null,
+          graphModalZoom: 1,
           lastSession: null,
           stableResultSession: null,
           displaySession: null,
@@ -1780,11 +2875,23 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           pending: '待执行'
         };
         const receiptMode = ${JSON.stringify(runtimeEnv.receiptMode)};
+        const themeStorageKey = 'live-workbench-theme';
+        const graphZoomStep = 0.15;
+        const graphZoomMin = 0.7;
+        const graphZoomMax = 2.4;
         const __name = (target, _value) => target;
+        const rootElement = document.documentElement;
         const stageGrid = document.getElementById('stage-grid');
         const overallStatus = document.getElementById('overall-status');
+        const themeToggle = document.getElementById('theme-toggle');
         const controlSummary = document.getElementById('control-summary');
         const controlPhase = document.getElementById('control-phase');
+        const controlStepper = document.getElementById('control-stepper');
+        const controlCardCurrentObject = document.getElementById('control-card-current-object');
+        const controlCardSourceStatus = document.getElementById('control-card-source-status');
+        const controlCardRunStatus = document.getElementById('control-card-run-status');
+        const controlCardCredentialStatus = document.getElementById('control-card-credential-status');
+        const controlCardNextAction = document.getElementById('control-card-next-action');
         const controlCurrentObject = document.getElementById('control-current-object');
         const controlSourceStatus = document.getElementById('control-source-status');
         const controlRunStatus = document.getElementById('control-run-status');
@@ -1819,6 +2926,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
         const startButton = document.getElementById('start-button');
         const fillSampleButton = document.getElementById('fill-sample-button');
         const presetButtons = document.querySelectorAll('.preset-launch-button');
+        const trialFillButtons = document.querySelectorAll('.trial-fill-button');
         const detailShell = document.getElementById('detail-drawer');
         const detailScrim = document.getElementById('detail-scrim');
         const detailPanelClose = document.getElementById('detail-panel-close');
@@ -1849,6 +2957,33 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
         const detailPresetSource = document.getElementById('detail-preset-source');
         const detailPresetCache = document.getElementById('detail-preset-cache');
         const detailPresetSummary = document.getElementById('detail-preset-summary');
+
+        const applyWorkbenchTheme = (theme) => {
+          const normalizedTheme = theme === 'dark' ? 'dark' : 'light';
+          rootElement.setAttribute('data-theme', normalizedTheme);
+
+          if (themeToggle) {
+            const nextThemeLabel = normalizedTheme === 'light' ? '切换到夜航' : '切换到晨雾';
+            themeToggle.setAttribute('aria-label', nextThemeLabel);
+            themeToggle.setAttribute('title', nextThemeLabel);
+            themeToggle.setAttribute('data-theme-icon', normalizedTheme === 'light' ? 'moon' : 'sun');
+            themeToggle.setAttribute('aria-pressed', normalizedTheme === 'dark' ? 'true' : 'false');
+          }
+        };
+
+        const readStoredTheme = () => {
+          try {
+            return window.localStorage.getItem(themeStorageKey);
+          } catch {
+            return null;
+          }
+        };
+
+        const persistTheme = (theme) => {
+          try {
+            window.localStorage.setItem(themeStorageKey, theme);
+          } catch {}
+        };
         const detailActions = document.getElementById('detail-actions');
 
         window.addEventListener('resize', () => {
@@ -1969,6 +3104,44 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
               button.disabled = false;
             }, 1200);
           }
+        };
+
+        const clampGraphZoom = (value) => Math.min(graphZoomMax, Math.max(graphZoomMin, value));
+        const formatGraphZoomLabel = (zoom) => Math.round(clampGraphZoom(zoom) * 100) + '%';
+
+        const syncGraphZoomLabel = (container, zoom) => {
+          const label = container?.querySelector('#graph-zoom-label');
+
+          if (label) {
+            label.textContent = formatGraphZoomLabel(zoom);
+          }
+        };
+
+        const syncGraphListZoom = (container, zoom) => {
+          const listBody = container?.querySelector('.graph-list.zoomable .graph-list-body');
+
+          if (listBody instanceof HTMLElement) {
+            listBody.style.setProperty('--graph-list-zoom', String(clampGraphZoom(zoom)));
+          }
+        };
+
+        const updateModalGraphZoom = (nextZoom) => {
+          state.graphModalZoom = clampGraphZoom(nextZoom);
+          syncGraphZoomLabel(graphModalPreview, state.graphModalZoom);
+          syncGraphListZoom(graphModalPreview, state.graphModalZoom);
+
+          if (!state.graphModalChart) {
+            return;
+          }
+
+          state.graphModalChart.setOption({
+            series: [
+              {
+                id: 'relationship-graph',
+                zoom: state.graphModalZoom
+              }
+            ]
+          });
         };
 
         const renderCopyableField = (label, value, options = {}) => {
@@ -2120,7 +3293,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
 
           detailPanelKicker.textContent = payload.kicker || '详情';
           detailPanelTitle.textContent = payload.title || '未命名卡片';
-          detailPanelSubtitle.textContent = payload.subtitle || '延展阅读、相关上下文与可执行动作';
+          detailPanelSubtitle.textContent = payload.subtitle || '深度解读、相关上下文与可执行动作';
           detailMainLabel.textContent = payload.mainLabel || '正文';
           detailMainCopy.textContent = payload.mainText || '暂无更多说明。';
 
@@ -2189,7 +3362,84 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           return 'n/a';
         };
 
-        const renderControlStrip = (workbenchModel) => {
+        const renderControlStepperFromStatuses = (statuses) => {
+          if (!controlStepper) {
+            return;
+          }
+
+          controlStepper.innerHTML = stageOrder.map((key, index) => \`
+            <div id="control-step-\${key}" class="control-step" data-stage-key="\${key}" data-stage-status="\${statuses[key]}">
+              <div class="control-step-marker">
+                <span class="control-step-dot" aria-hidden="true"></span>
+                \${index < stageOrder.length - 1 ? '<span class="control-step-line" aria-hidden="true"></span>' : ''}
+              </div>
+              <span class="control-step-name">\${stageLabels[key]}</span>
+            </div>
+          \`).join('');
+        };
+
+        const renderControlStepper = (session) => {
+          renderControlStepperFromStatuses(buildDerivedStages(session));
+        };
+
+        const setControlCardTone = (element, tone) => {
+          if (element) {
+            element.setAttribute('data-card-tone', tone);
+          }
+        };
+
+        const getControlCardTones = (session, workbenchModel) => {
+          const successfulRuns = session?.agentSession?.totals?.successfulRuns
+            ?? session?.steps?.filter((step) => step.status === 'completed').length
+            ?? 0;
+          const hasSource = Boolean(session?.source?.text?.trim() || session?.source?.metadata?.articleUrl);
+          const summaryStatus = getStepStatus(session, 'summary');
+          const pageTone = workbenchModel.pageStateTone;
+
+          return {
+            currentObject:
+              !session
+                ? 'idle'
+                : summaryStatus === 'completed'
+                  ? 'completed'
+                  : pageTone === 'failed'
+                    ? 'failed'
+                    : pageTone === 'running'
+                      ? 'running'
+                      : 'ready',
+            sourceStatus:
+              !hasSource
+                ? 'idle'
+                : session?.status === 'failed' && !hasStableWorkbenchResult(session)
+                  ? 'failed'
+                  : 'completed',
+            runStatus: pageTone,
+            credentialStatus:
+              !session
+                ? 'idle'
+                : pageTone === 'failed' && successfulRuns === 0
+                  ? 'failed'
+                  : pageTone === 'running'
+                    ? 'running'
+                    : successfulRuns > 0
+                      ? 'completed'
+                      : pageTone === 'ready'
+                        ? 'ready'
+                        : 'idle',
+            nextAction:
+              !session
+                ? 'idle'
+                : pageTone === 'completed'
+                  ? 'completed'
+                  : pageTone === 'failed'
+                    ? 'failed'
+                    : pageTone === 'running'
+                      ? 'running'
+                      : 'ready'
+          };
+        };
+
+        const renderControlStrip = (workbenchModel, session) => {
           if (!controlSummary || !controlPhase || !controlCurrentObject || !controlSourceStatus || !controlRunStatus || !controlCredentialStatus || !controlNextAction || !controlNextActionHint) {
             return;
           }
@@ -2202,6 +3452,13 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           controlCredentialStatus.textContent = workbenchModel.credentialStatusValue;
           controlNextAction.textContent = workbenchModel.nextActionLabel;
           controlNextActionHint.textContent = workbenchModel.nextActionHint;
+          const cardTones = getControlCardTones(session, workbenchModel);
+          setControlCardTone(controlCardCurrentObject, cardTones.currentObject);
+          setControlCardTone(controlCardSourceStatus, cardTones.sourceStatus);
+          setControlCardTone(controlCardRunStatus, cardTones.runStatus);
+          setControlCardTone(controlCardCredentialStatus, cardTones.credentialStatus);
+          setControlCardTone(controlCardNextAction, cardTones.nextAction);
+          renderControlStepper(session);
         };
 
         const buildDerivedStages = (session) => {
@@ -2230,7 +3487,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           if (overviewCard) {
             overviewCard.setAttribute('data-detail-payload', JSON.stringify({
               kind: 'overview',
-              kicker: '事件总览',
+              kicker: '执行摘要',
               title: workbenchModel.headline,
               subtitle: '摘要延展',
               mainLabel: '摘要正文',
@@ -2280,7 +3537,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
                   subtitle: '判断延展',
                   mainLabel: '判断正文',
                   mainText: judgment.body,
-                  quoteLabel: '对应证据摘录',
+                  quoteLabel: '对应证据锚点',
                   quote: judgment.evidenceQuote,
                   tags: judgment.detailTags,
                   sourceStatus: judgment.detailSourceStatus
@@ -2316,7 +3573,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
                 class="evidence-card card-detail-trigger"
                 data-detail-payload="\${escapeText(JSON.stringify({
                   kind: 'evidence',
-                  kicker: '证据摘录 ' + (index + 1),
+                  kicker: '证据锚点 ' + (index + 1),
                   title: judgment.evidenceTitle,
                   subtitle: workbenchModel.sourceLabel,
                   mainLabel: '说明',
@@ -2333,7 +3590,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
                   actions: [
                     judgment.evidenceDetail.articleUrl ? { type: 'link', label: '查看原文', href: judgment.evidenceDetail.articleUrl } : null,
                     state.displaySession?.graphUrl || state.lastSession?.graphUrl
-                      ? { type: 'graph-expand', label: '展开辅助关系图' }
+                      ? { type: 'graph-expand', label: '展开关系导航' }
                       : null
                   ].filter(Boolean)
                 }))}"
@@ -2389,7 +3646,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
 
         const renderSource = (session, workbenchModel) => {
           if (!session) {
-            sourcePreview.innerHTML = '<p class="source-note">可通过链接导入、手动文本或预置样本启动分析，来源方式与导入状态会在这里持续展示。</p>';
+            sourcePreview.innerHTML = '<p class="source-note">等待来源进入。</p>';
             return;
           }
 
@@ -2412,21 +3669,21 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
 
           if (entities.length === 0) {
             if (workbenchModel.entityStepStatus === 'completed') {
-              entityPreview.innerHTML = '<p class="muted">实体步骤已完成，但当前没有返回稳定主体，建议结合原文继续人工复核。</p>';
+              entityPreview.innerHTML = '<p class="muted">主体步骤已完成，但当前没有稳定主体。</p>';
               return;
             }
 
             if (workbenchModel.entityStepStatus === 'running') {
-              entityPreview.innerHTML = '<p class="muted">实体步骤进行中，核心主体会在返回后出现在这里。</p>';
+              entityPreview.innerHTML = '<p class="muted">主体识别进行中。</p>';
               return;
             }
 
             if (workbenchModel.entityStepStatus === 'failed') {
-              entityPreview.innerHTML = '<p class="muted">实体步骤未完成，建议先查看分析凭证与错误信息。</p>';
+              entityPreview.innerHTML = '<p class="muted">主体步骤失败，请先查看凭证。</p>';
               return;
             }
 
-            entityPreview.innerHTML = '<p class="muted">核心主体会在实体步骤开始返回后逐步出现。</p>';
+            entityPreview.innerHTML = '<p class="muted">等待主体返回。</p>';
             return;
           }
 
@@ -2437,13 +3694,13 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
                 .map((entity) => \`<span class="entity-chip">\${escapeText(entity.name)}\${entity.type ? ' · ' + escapeText(entity.type) : ''}</span>\`)
                 .join('')}
             </div>
-            <p class="source-note">已识别 \${escapeText(String(entities.length))} 个主体，可结合辅助关系图继续扫清连接。</p>
+            <p class="source-note">已识别 \${escapeText(String(entities.length))} 个主体，可结合关系导航继续扫清连接。</p>
           \`;
         };
 
         const renderCredentials = (session) => {
           if (!session) {
-            credentialPreview.innerHTML = 'payment、receipt 与 payloadHash 会在这里统一展示。';
+            credentialPreview.innerHTML = '等待凭证回填。';
             return;
           }
 
@@ -2495,37 +3752,54 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           }
         };
 
-        const buildGraphCardHeader = (expandable) => \`
+        const buildGraphCardHeader = (expandable, zoomable = false) => \`
             <div class="graph-preview-header">
-              <div class="stage-label">辅助关系图</div>
-              \${expandable ? '<button type="button" class="copy-button graph-expand-button" data-graph-expand="true" data-testid="graph-expand-button">展开关系图</button>' : ''}
+              <div class="graph-preview-meta">
+                <div class="stage-label">关系导航</div>
+                <p class="graph-preview-note">\${zoomable ? '滚轮、拖拽与按钮缩放同时可用。' : '快速查看主体连接与上下游走向。'}</p>
+              </div>
+              <div class="graph-controls">
+                \${zoomable
+                  ? '<button type="button" class="copy-button graph-zoom-button" data-graph-zoom="out" aria-label="缩小图谱">-</button><span id="graph-zoom-label" class="graph-zoom-label">100%</span><button type="button" class="copy-button graph-zoom-button" data-graph-zoom="in" aria-label="放大图谱">+</button><button type="button" class="copy-button graph-zoom-button" data-graph-zoom="reset" aria-label="重置图谱">重置</button>'
+                  : ''}
+                \${expandable ? '<button type="button" class="copy-button graph-expand-button" data-graph-expand="true" data-testid="graph-expand-button">展开关系导航</button>' : ''}
+              </div>
             </div>
         \`;
 
         const renderGraphList = (container, nodes, edges, options = {}) => {
           const chartKey = options.chartKey ?? 'graphChart';
           const expandable = Boolean(options.expandable);
+          const zoomable = Boolean(options.zoomable);
+          const graphZoom = zoomable ? state.graphModalZoom : 1;
 
           disposeGraphChart(chartKey);
           container.innerHTML = \`
-            \${buildGraphCardHeader(expandable)}
-            <div class="graph-list">
-              <div>
-                \${nodes
-                  .slice(0, 6)
-                  .map((node) => \`<span class="entity-chip">\${escapeText(node.label)}\${node.type ? ' · ' + escapeText(node.type) : ''}</span>\`)
-                  .join('')}
+            \${buildGraphCardHeader(expandable, zoomable)}
+            <div class="graph-list \${zoomable ? 'zoomable' : ''}">
+              <div class="graph-list-body" style="\${zoomable ? '--graph-list-zoom:' + graphZoom + ';' : ''}">
+                <div>
+                  \${nodes
+                    .slice(0, 6)
+                    .map((node) => \`<span class="entity-chip">\${escapeText(node.label)}\${node.type ? ' · ' + escapeText(node.type) : ''}</span>\`)
+                    .join('')}
+                </div>
+                <ul>
+                  \${(edges.length > 0
+                    ? edges
+                    : [{ source: '工作台', label: '提示', target: '主体或关系不足，已降级为清单视图', provenance: 'derived' }])
+                    .slice(0, 4)
+                    .map((edge) => \`<li>\${escapeText(edge.source)} \${escapeText(edge.label)} \${escapeText(edge.target)}\${edge.provenance === 'derived' ? '（derived）' : ''}</li>\`)
+                    .join('')}
+                </ul>
               </div>
-              <ul>
-                \${(edges.length > 0
-                  ? edges
-                  : [{ source: '工作台', label: '提示', target: '主体或关系不足，已降级为清单视图', provenance: 'derived' }])
-                  .slice(0, 4)
-                  .map((edge) => \`<li>\${escapeText(edge.source)} \${escapeText(edge.label)} \${escapeText(edge.target)}\${edge.provenance === 'derived' ? '（derived）' : ''}</li>\`)
-                  .join('')}
-              </ul>
             </div>
           \`;
+
+          if (zoomable) {
+            syncGraphZoomLabel(container, graphZoom);
+            syncGraphListZoom(container, graphZoom);
+          }
         };
 
         const renderGraphSurface = (container, session, options = {}) => {
@@ -2533,10 +3807,11 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           const canvasId = options.canvasId ?? 'graph-canvas';
           const canvasClass = options.canvasClass ?? 'graph-canvas';
           const expandable = Boolean(options.expandable);
+          const zoomable = Boolean(options.zoomable);
 
           if (!session?.agentSession?.graph) {
             disposeGraphChart(chartKey);
-            container.innerHTML = '<p class="muted">辅助关系图会在摘要、主体和关系补齐后出现，弱数据场景会自动降级为清单视图。</p>';
+            container.innerHTML = '<p class="muted">等待关系返回。</p>';
             return;
           }
 
@@ -2545,57 +3820,83 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           const graphMode = getGraphPresentationMode(session);
 
           if (graphMode === 'list') {
-            renderGraphList(container, nodes, edges, { chartKey, expandable });
+            renderGraphList(container, nodes, edges, { chartKey, expandable, zoomable });
             return;
           }
 
           if (graphMode === 'empty') {
             disposeGraphChart(chartKey);
-            container.innerHTML = '<p class="muted">辅助关系图会在摘要、主体和关系补齐后出现，弱数据场景会自动降级为清单视图。</p>';
+            container.innerHTML = '<p class="muted">等待关系返回。</p>';
             return;
           }
 
           container.innerHTML = \`
-            \${buildGraphCardHeader(expandable)}
+            \${buildGraphCardHeader(expandable, zoomable)}
             <div id="\${canvasId}" class="\${canvasClass}" role="img" aria-label="Auxiliary relationship graph"></div>
           \`;
 
           const graphCanvas = document.getElementById(canvasId);
 
           if (!graphCanvas || !window.echarts) {
-            renderGraphList(container, nodes, edges, { chartKey, expandable });
+            renderGraphList(container, nodes, edges, { chartKey, expandable, zoomable });
             return;
           }
 
           disposeGraphChart(chartKey);
+          const isLightTheme = rootElement.getAttribute('data-theme') === 'light';
+          const graphZoom = zoomable ? state.graphModalZoom : 1;
           state[chartKey] = window.echarts.init(graphCanvas, null, { renderer: 'svg' });
           state[chartKey].setOption({
             animationDuration: 420,
             tooltip: {
-              trigger: 'item'
+              trigger: 'item',
+              backgroundColor: isLightTheme ? 'rgba(255, 255, 255, 0.96)' : 'rgba(5, 11, 20, 0.94)',
+              borderColor: isLightTheme ? 'rgba(59, 130, 246, 0.18)' : 'rgba(140, 198, 255, 0.22)',
+              textStyle: {
+                color: isLightTheme ? '#102132' : '#edf4fb',
+                fontSize: 12
+              }
             },
             series: [
               {
+                id: 'relationship-graph',
                 type: 'graph',
                 layout: 'none',
                 roam: true,
-                label: {
-                  show: true,
-                  position: 'bottom',
-                  color: '#0f172a',
-                  fontSize: 12
-                },
-                edgeLabel: {
-                  show: true,
-                  formatter: ({ data }) => data.value,
-                  color: '#334155',
-                  fontSize: 11
-                },
-                lineStyle: {
-                  color: '#94a3b8',
-                  width: 2,
-                  curveness: 0.08
-                },
+                zoom: graphZoom,
+                 label: {
+                   show: true,
+                   position: 'bottom',
+                   color: '#f8fbff',
+                   fontSize: 15,
+                   fontWeight: 700,
+                   backgroundColor: isLightTheme ? 'rgba(15, 23, 42, 0.78)' : 'rgba(5, 11, 20, 0.82)',
+                   padding: [6, 10],
+                   borderRadius: 999,
+                   textBorderColor: isLightTheme ? 'rgba(15, 23, 42, 0.32)' : 'rgba(2, 6, 23, 0.92)',
+                   textBorderWidth: 6,
+                   shadowColor: 'rgba(2, 8, 23, 0.22)',
+                   shadowBlur: 18
+                 },
+                 edgeLabel: {
+                   show: true,
+                   formatter: ({ data }) => data.value,
+                   color: isLightTheme ? '#102132' : '#dbeafe',
+                   fontSize: 12,
+                   fontWeight: 700,
+                   backgroundColor: isLightTheme ? 'rgba(255, 255, 255, 0.92)' : 'rgba(5, 11, 20, 0.84)',
+                   padding: [4, 8],
+                   borderRadius: 999,
+                   textBorderColor: isLightTheme ? 'rgba(255, 255, 255, 0.2)' : 'rgba(2, 6, 23, 0.92)',
+                   textBorderWidth: 4,
+                   shadowColor: 'rgba(2, 8, 23, 0.16)',
+                   shadowBlur: 12
+                 },
+                 lineStyle: {
+                   color: isLightTheme ? '#7c8fa6' : '#8cc6ff',
+                   width: 2.6,
+                   curveness: 0.08
+                 },
                 emphasis: {
                   focus: 'adjacency'
                 },
@@ -2605,9 +3906,13 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
                   value: node.type,
                   x: node.x,
                   y: node.y,
-                  symbolSize: 52,
+                  symbolSize: zoomable ? 64 : 58,
                   itemStyle: {
-                    color: node.color
+                    color: node.color,
+                    borderColor: isLightTheme ? 'rgba(255, 255, 255, 0.94)' : 'rgba(237, 244, 251, 0.9)',
+                    borderWidth: 2,
+                    shadowColor: 'rgba(2, 8, 23, 0.26)',
+                    shadowBlur: 18
                   }
                 })),
                 links: edges.map((edge) => ({
@@ -2622,6 +3927,17 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
               }
             ]
           });
+
+          syncGraphZoomLabel(container, graphZoom);
+
+          if (zoomable) {
+            state[chartKey].off('graphRoam');
+            state[chartKey].on('graphRoam', () => {
+              const currentZoom = Number(state[chartKey]?.getOption?.()?.series?.[0]?.zoom ?? state.graphModalZoom);
+              state.graphModalZoom = clampGraphZoom(currentZoom);
+              syncGraphZoomLabel(container, state.graphModalZoom);
+            });
+          }
         };
 
         const renderGraph = (session) => {
@@ -2638,6 +3954,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
             return;
           }
 
+          state.graphModalZoom = 1;
           graphModal.classList.remove('hidden');
           graphModal.setAttribute('aria-hidden', 'false');
 
@@ -2650,7 +3967,8 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
               chartKey: 'graphModalChart',
               canvasId: 'graph-modal-canvas',
               canvasClass: 'graph-modal-canvas',
-              expandable: false
+              expandable: false,
+              zoomable: true
             });
             state.graphModalChart?.resize();
           });
@@ -2666,13 +3984,92 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           \`).join('');
         };
 
-        const setOverallStatus = (workbenchModel) => {
+        const getOverallStatusPresentation = (session, tone) => {
+          const totalStages = stageOrder.length;
+
+          if (!session) {
+            return {
+              icon: 'idle',
+              meta: '0 / 5 阶段',
+              progress: 0
+            };
+          }
+
+          const statuses = buildDerivedStages(session);
+          const completedStages = stageOrder.filter((key) => statuses[key] === 'completed').length;
+          const runningStageIndex = stageOrder.findIndex((key) => statuses[key] === 'running');
+          const failedStageIndex = stageOrder.findIndex((key) => statuses[key] === 'failed');
+          const activeStageCount = runningStageIndex >= 0
+            ? runningStageIndex + 1
+            : failedStageIndex >= 0
+              ? failedStageIndex + 1
+              : completedStages;
+
+          if (tone === 'completed') {
+            return {
+              icon: 'completed',
+              meta: '5 / 5 阶段',
+              progress: 100
+            };
+          }
+
+          if (tone === 'failed') {
+            return {
+              icon: 'failed',
+              meta: Math.max(activeStageCount, 1) + ' / ' + totalStages + ' 阶段',
+              progress: Math.max(18, Math.min(92, Math.round((Math.max(activeStageCount - 0.3, 0.7) / totalStages) * 100)))
+            };
+          }
+
+          if (tone === 'running') {
+            return {
+              icon: 'running',
+              meta: Math.max(activeStageCount, 1) + ' / ' + totalStages + ' 阶段',
+              progress: Math.max(24, Math.min(96, Math.round((Math.max(activeStageCount - 0.35, 0.9) / totalStages) * 100)))
+            };
+          }
+
+          if (tone === 'ready') {
+            return {
+              icon: 'ready',
+              meta: Math.max(completedStages, 1) + ' / ' + totalStages + ' 阶段',
+              progress: Math.max(14, Math.round((Math.max(completedStages, 1) / totalStages) * 100))
+            };
+          }
+
+          return {
+            icon: 'idle',
+            meta: '0 / 5 阶段',
+            progress: 0
+          };
+        };
+
+        const setOverallStatus = (workbenchModel, session) => {
           if (!overallStatus) {
             return;
           }
 
-          overallStatus.textContent = workbenchModel.pageStateLabel;
-          overallStatus.className = workbenchModel.pageStateTone === 'failed' ? 'status-chip failed' : 'status-chip';
+          const presentation = getOverallStatusPresentation(session, workbenchModel.pageStateTone);
+          overallStatus.className = 'status-chip';
+          overallStatus.setAttribute('data-status-tone', workbenchModel.pageStateTone);
+          overallStatus.innerHTML = \`
+            <span id="overall-status-icon" class="status-chip-icon" data-status-icon="\${presentation.icon}" aria-hidden="true"></span>
+            <span class="status-chip-copy">
+              <strong id="overall-status-label" class="status-chip-label">\${escapeText(workbenchModel.pageStateLabel)}</strong>
+              <span id="overall-status-meta" class="status-chip-meta">\${escapeText(presentation.meta)}</span>
+            </span>
+            <span
+              id="overall-status-progressbar"
+              class="status-chip-progress"
+              role="progressbar"
+              aria-label="分析进度"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              aria-valuenow="\${presentation.progress}"
+            >
+              <span id="overall-status-progress" class="status-chip-progress-fill" style="width:\${presentation.progress}%"></span>
+            </span>
+          \`;
         };
 
         const stopPolling = () => {
@@ -2703,8 +4100,13 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
         };
 
         const setInterruptedState = () => {
-          overallStatus.textContent = statusText('interrupted');
-          overallStatus.className = 'status-chip failed';
+          setOverallStatus(
+            {
+              pageStateLabel: statusText('interrupted'),
+              pageStateTone: 'failed'
+            },
+            state.lastSession
+          );
           formMessage.textContent = '分析连接已中断，请重新开始分析。';
           formMessage.className = 'error';
           setLaunchControlsDisabled(false);
@@ -2714,6 +4116,11 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           }
 
           const statuses = buildDerivedStages(state.lastSession);
+          renderControlStepperFromStatuses(
+            Object.fromEntries(
+              stageOrder.map((key) => [key, statuses[key] === 'completed' ? 'completed' : 'failed'])
+            )
+          );
           stageGrid.innerHTML = stageOrder.map((key) => {
             const baseStatus = statuses[key];
             const displayStatus = baseStatus === 'completed' ? 'completed' : 'failed';
@@ -2768,10 +4175,10 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
               : '当前 sessionId: ' + session.sessionId + statusLabel + cachedAtLabel + retainedNote;
           }
 
-          const workbenchModel = createLiveWorkbenchViewModel(displaySession, supportedSourceLabels);
-          renderControlStrip(workbenchModel);
-          setOverallStatus(workbenchModel);
-          renderCredentials(displaySession ?? session);
+           const workbenchModel = createLiveWorkbenchViewModel(displaySession, supportedSourceLabels);
+            renderControlStrip(workbenchModel, session ?? displaySession);
+           setOverallStatus(workbenchModel, session ?? displaySession);
+           renderCredentials(displaySession ?? session);
           renderStages(session ?? displaySession);
           renderEventOverview(displaySession, workbenchModel);
           renderJudgments(workbenchModel);
@@ -2955,6 +4362,23 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           });
         }
 
+        for (const button of trialFillButtons) {
+          button.addEventListener('click', () => {
+            const trialLink = button.getAttribute('data-trial-link');
+
+            if (!trialLink) {
+              return;
+            }
+
+            inputModeInput.value = 'link';
+            applyInputMode('link');
+            articleUrlInput.value = trialLink;
+            formMessage.textContent = '已填入推荐试跑链接，可直接开始分析。';
+            formMessage.className = 'muted';
+            articleUrlInput.focus();
+          });
+        }
+
         if (detailShell) {
           detailShell.addEventListener('click', (event) => {
             if (event.target === detailScrim || event.target === detailPanelClose) {
@@ -2974,12 +4398,27 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
         document.addEventListener('click', async (event) => {
           const target = event.target;
           const graphExpandButton = target instanceof Element ? target.closest('[data-graph-expand]') : null;
+          const graphZoomButton = target instanceof Element ? target.closest('[data-graph-zoom]') : null;
 
           if (graphExpandButton) {
             const graphSession = state.displaySession ?? state.lastSession;
 
             if (graphSession) {
               openGraphModal(graphSession);
+            }
+
+            return;
+          }
+
+          if (graphZoomButton) {
+            const zoomAction = graphZoomButton.getAttribute('data-graph-zoom');
+
+            if (zoomAction === 'in') {
+              updateModalGraphZoom(state.graphModalZoom + graphZoomStep);
+            } else if (zoomAction === 'out') {
+              updateModalGraphZoom(state.graphModalZoom - graphZoomStep);
+            } else {
+              updateModalGraphZoom(1);
             }
 
             return;
@@ -3070,7 +4509,26 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           openDetailPanel(payload);
         });
 
+        if (themeToggle) {
+          themeToggle.addEventListener('click', () => {
+            const nextTheme = rootElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+            applyWorkbenchTheme(nextTheme);
+            persistTheme(nextTheme);
+
+            const graphSession = state.displaySession ?? state.lastSession;
+
+            if (graphSession) {
+              renderGraph(graphSession);
+
+              if (graphModal && !graphModal.classList.contains('hidden')) {
+                openGraphModal(graphSession);
+              }
+            }
+          });
+        }
+
         const bootstrap = async () => {
+          applyWorkbenchTheme(readStoredTheme() === 'dark' ? 'dark' : 'light');
           applyInputMode(inputModeInput.value);
           updateView(null);
 
@@ -3099,10 +4557,18 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
 
 export const createLiveRouter = (options: CreateLiveRouterOptions) => {
   const router = Router();
+  const presetProvider = new LiveNewsPresetProvider({
+    newsImporter: options.newsImporter
+  });
 
-  router.get('/', (_request, response) => {
+  router.get('/brand/logo.png', (_request, response) => {
+    response.status(200).type('png').sendFile(LIVE_BRAND_LOGO_PATH);
+  });
+
+  router.get('/', async (_request, response) => {
     applyNoStoreHeaders(response);
-    response.status(200).type('html').send(renderLiveConsolePage(options.runtimeEnv));
+    const presets = await presetProvider.listPresets().catch(() => liveNewsPresets);
+    response.status(200).type('html').send(renderLiveConsolePage(options.runtimeEnv, presets));
   });
 
   router.post('/session', async (request, response) => {

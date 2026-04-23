@@ -10,6 +10,8 @@ type CreateGraphRouterOptions = {
   runtimeEnv: RuntimeEnv;
 };
 
+const LIVE_BRAND_LOGO_URL = '/demo/live/brand/logo.png';
+
 const escapeHtml = (value: string): string => {
   return value
     .replaceAll('&', '&amp;')
@@ -74,8 +76,8 @@ const renderSourceMetadata = (session: AgentSession): string => {
   if (!metadata) {
     return `
       <div class="meta-card source-card">
-        <strong>导入来源</strong>
-        <p>未记录导入来源</p>
+        <strong>来源信息</strong>
+        <p>未记录来源信息</p>
         <p class="summary">这个 session 来自旧版本产物，source metadata 不存在时页面会保持兼容展示。</p>
       </div>
     `;
@@ -83,7 +85,7 @@ const renderSourceMetadata = (session: AgentSession): string => {
 
   return `
     <div class="meta-card source-card">
-      <strong>导入来源</strong>
+      <strong>来源信息</strong>
       ${renderEvidenceField(
         'articleUrl',
         metadata.articleUrl ?? 'n/a',
@@ -132,35 +134,38 @@ const renderGraphPage = (session: AgentSession): string => {
     ? session.relations
         .map((relation) => `<li>${escapeHtml(relation.source)} ${escapeHtml(relation.relation)} ${escapeHtml(relation.target)}</li>`)
         .join('')
-    : '<li>当前关系较弱，建议回到工作台结合关键判断与证据摘录继续复核。</li>';
+    : '<li>当前关系较弱，建议回到 Desk 结合核心结论与证据锚点继续复核。</li>';
 
   return `<!DOCTYPE html>
   <html lang="zh-CN">
     <head>
       <meta charset="utf-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1" />
-      <title>知识图谱 ${escapeHtml(session.sessionId)}</title>
+      <title>关系导航 ${escapeHtml(session.sessionId)}</title>
+      <link rel="icon" type="image/png" href="${LIVE_BRAND_LOGO_URL}" />
+      <link rel="shortcut icon" type="image/png" href="${LIVE_BRAND_LOGO_URL}" />
       <style>
         :root {
-          color-scheme: light;
-          --bg: #eef2f7;
-          --panel: rgba(255, 255, 255, 0.95);
-          --border: rgba(15, 23, 42, 0.12);
-          --text: #0f172a;
-          --muted: #475569;
-          --accent: #0f766e;
-          --gold: #b45309;
+          color-scheme: dark;
+          --bg: #050912;
+          --panel: rgba(10, 16, 27, 0.92);
+          --border: rgba(140, 198, 255, 0.14);
+          --text: #edf4fb;
+          --muted: #93a4b8;
+          --accent: #86e7d4;
+          --gold: #d6a96c;
         }
 
         * { box-sizing: border-box; }
 
         body {
           margin: 0;
-          font-family: "Iowan Old Style", "Palatino Linotype", serif;
+          font-family: "Avenir Next", "Segoe UI", "PingFang SC", sans-serif;
           color: var(--text);
           background:
-            radial-gradient(circle at top left, rgba(15, 118, 110, 0.16), transparent 28rem),
-            linear-gradient(180deg, #dde6ef 0%, var(--bg) 60%);
+            radial-gradient(circle at 12% 0%, rgba(140, 198, 255, 0.16), transparent 26rem),
+            radial-gradient(circle at 86% 10%, rgba(134, 231, 212, 0.12), transparent 20rem),
+            linear-gradient(180deg, #07101b 0%, var(--bg) 60%);
         }
 
         main {
@@ -173,12 +178,53 @@ const renderGraphPage = (session: AgentSession): string => {
           background: var(--panel);
           border: 1px solid var(--border);
           border-radius: 24px;
-          box-shadow: 0 20px 45px rgba(15, 23, 42, 0.08);
+          box-shadow: 0 24px 50px rgba(2, 8, 23, 0.34);
         }
 
         .hero {
           padding: 24px;
           margin-bottom: 20px;
+        }
+
+        .brand-row {
+          display: flex;
+          align-items: center;
+          gap: 14px;
+          margin-bottom: 14px;
+        }
+
+        .brand-mark {
+          width: 46px;
+          height: 46px;
+          border-radius: 14px;
+          overflow: hidden;
+          border: 1px solid rgba(15, 23, 42, 0.08);
+          background: rgba(255, 255, 255, 0.72);
+        }
+
+        .brand-mark img {
+          width: 100%;
+          height: 100%;
+          display: block;
+          object-fit: cover;
+        }
+
+        .brand-copy {
+          display: grid;
+          gap: 2px;
+        }
+
+        .brand-wordmark {
+          font-size: 1.05rem;
+          font-weight: 800;
+          letter-spacing: -0.03em;
+        }
+
+        .brand-subtitle {
+          font-size: 12px;
+          letter-spacing: 0.12em;
+          text-transform: uppercase;
+          color: var(--accent);
         }
 
         .eyebrow {
@@ -233,12 +279,32 @@ const renderGraphPage = (session: AgentSession): string => {
 
         .graph-surface {
           border-radius: 24px;
-          border: 1px solid rgba(148, 163, 184, 0.2);
+          border: 1px solid rgba(140, 198, 255, 0.14);
           background:
-            radial-gradient(circle at top left, rgba(15, 118, 110, 0.08), transparent 12rem),
-            rgba(255, 255, 255, 0.9);
+            radial-gradient(circle at 16% 18%, rgba(140, 198, 255, 0.16), transparent 10rem),
+            radial-gradient(circle at 84% 12%, rgba(134, 231, 212, 0.12), transparent 10rem),
+            linear-gradient(180deg, rgba(7, 13, 24, 0.94), rgba(5, 9, 18, 0.92));
           min-height: 560px;
           padding: 18px;
+          position: relative;
+          overflow: hidden;
+        }
+
+        .graph-surface::before {
+          content: "";
+          position: absolute;
+          inset: 0;
+          pointer-events: none;
+          background:
+            linear-gradient(rgba(148, 163, 184, 0.06) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(148, 163, 184, 0.06) 1px, transparent 1px);
+          background-size: 34px 34px;
+          mask-image: radial-gradient(circle at center, black, transparent 92%);
+        }
+
+        .graph-surface > * {
+          position: relative;
+          z-index: 1;
         }
 
         .graph-canvas {
@@ -250,6 +316,13 @@ const renderGraphPage = (session: AgentSession): string => {
           display: flex;
           flex-wrap: wrap;
           gap: 10px;
+        }
+
+        .graph-toolbar {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          gap: 8px;
         }
 
         .hint-pill {
@@ -325,6 +398,21 @@ const renderGraphPage = (session: AgentSession): string => {
           text-decoration: none;
         }
 
+        .graph-zoom-label {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-width: 64px;
+          padding: 8px 12px;
+          border-radius: 999px;
+          border: 1px solid rgba(140, 198, 255, 0.18);
+          background: rgba(5, 11, 20, 0.82);
+          color: var(--text);
+          font-family: "SFMono-Regular", "Menlo", monospace;
+          font-size: 12px;
+          letter-spacing: 0.06em;
+        }
+
         .copy-button:disabled {
           opacity: 0.7;
           cursor: default;
@@ -348,18 +436,33 @@ const renderGraphPage = (session: AgentSession): string => {
     <body>
       <main>
         <section class="hero">
-          <div class="eyebrow">辅助关系浏览器</div>
+          <div class="brand-row">
+            <div class="brand-mark" aria-hidden="true">
+              <img src="${LIVE_BRAND_LOGO_URL}" alt="" />
+            </div>
+            <div class="brand-copy">
+              <div class="brand-wordmark">Arc</div>
+              <div class="brand-subtitle">The Economic OS</div>
+            </div>
+          </div>
+          <div class="eyebrow">关系导航器</div>
           <h1>${escapeHtml(session.source.title ?? session.sessionId)}</h1>
-          <p class="summary">独立 graph 页面只负责关系浏览，不承担结果主阅读。需要完整结论时，请回到工作台沿“事件总览 -> 关键判断 -> 证据摘录”继续查看。</p>
-          <a class="return-link" href="/demo/live">返回工作台</a>
+          <p class="summary">独立 graph 页面只负责关系导航，不承担结果主阅读。需要完整结论时，请回到 Arc Signal Desk 沿“执行摘要 -> 核心结论 -> 证据锚点”继续查看。</p>
+          <a class="return-link" href="/demo/live">返回 Arc Signal Desk</a>
         </section>
 
         <section class="layout">
           <article class="panel">
             <div class="graph-header">
-              <div class="eyebrow">关系浏览器</div>
-              <h2>图谱画布</h2>
+              <div class="eyebrow">关系导航</div>
+              <h2>关系画布</h2>
               <p class="summary">使用 ECharts 渲染，支持滚轮缩放与拖动画布。derived 仅用于浏览连通性，不代表真实抽取关系。</p>
+              <div class="graph-toolbar" aria-label="图谱缩放控制">
+                <button type="button" class="copy-button" data-graph-zoom="out" aria-label="缩小图谱">-</button>
+                <span id="graph-zoom-label" class="graph-zoom-label">100%</span>
+                <button type="button" class="copy-button" data-graph-zoom="in" aria-label="放大图谱">+</button>
+                <button type="button" class="copy-button" data-graph-zoom="reset" aria-label="重置图谱">重置</button>
+              </div>
               <div class="hint-row">
                 <span class="hint-pill">滚轮缩放</span>
                 <span class="hint-pill">拖动画布</span>
@@ -374,15 +477,15 @@ const renderGraphPage = (session: AgentSession): string => {
           <article class="panel">
             <div class="side-stack">
               <div>
-                <div class="eyebrow">图谱说明</div>
-                <h2>关系清单</h2>
+                <div class="eyebrow">导航说明</div>
+                <h2>连接清单</h2>
                 <ul class="relation-list">
                   ${relationList}
                 </ul>
               </div>
               <div>
-                <div class="eyebrow">来源元数据</div>
-                <h2>导入来源</h2>
+                <div class="eyebrow">来源元信息</div>
+                <h2>来源信息</h2>
                 ${renderSourceMetadata(session)}
               </div>
             </div>
@@ -435,7 +538,37 @@ const renderGraphPage = (session: AgentSession): string => {
           };
 
           const graphCanvas = document.getElementById('graph-canvas');
+          const graphZoomLabel = document.getElementById('graph-zoom-label');
+          const graphZoomStep = 0.15;
+          const graphZoomMin = 0.7;
+          const graphZoomMax = 2.4;
           let chart = null;
+          let graphZoom = 1;
+
+          const clampGraphZoom = (value) => Math.min(graphZoomMax, Math.max(graphZoomMin, value));
+          const syncGraphZoomLabel = () => {
+            if (graphZoomLabel) {
+              graphZoomLabel.textContent = Math.round(graphZoom * 100) + '%';
+            }
+          };
+
+          const updateGraphZoom = (nextZoom) => {
+            graphZoom = clampGraphZoom(nextZoom);
+            syncGraphZoomLabel();
+
+            if (!chart) {
+              return;
+            }
+
+            chart.setOption({
+              series: [
+                {
+                  id: 'relationship-graph',
+                  zoom: graphZoom
+                }
+              ]
+            });
+          };
 
           const renderGraph = () => {
             if (!graphCanvas || !window.echarts || graphNodes.length === 0) {
@@ -446,28 +579,52 @@ const renderGraphPage = (session: AgentSession): string => {
             chart.setOption({
               animationDuration: 420,
               tooltip: {
-                trigger: 'item'
+                trigger: 'item',
+                backgroundColor: 'rgba(5, 11, 20, 0.94)',
+                borderColor: 'rgba(140, 198, 255, 0.22)',
+                textStyle: {
+                  color: '#edf4fb',
+                  fontSize: 12
+                }
               },
               series: [
                 {
+                  id: 'relationship-graph',
                   type: 'graph',
                   layout: 'none',
                   roam: true,
+                  zoom: graphZoom,
                   label: {
                     show: true,
                     position: 'bottom',
-                    color: '#0f172a',
-                    fontSize: 12
+                    color: '#f8fbff',
+                    fontSize: 15,
+                    fontWeight: 700,
+                    backgroundColor: 'rgba(5, 11, 20, 0.82)',
+                    padding: [6, 10],
+                    borderRadius: 999,
+                    textBorderColor: 'rgba(2, 6, 23, 0.92)',
+                    textBorderWidth: 6,
+                    shadowColor: 'rgba(2, 8, 23, 0.22)',
+                    shadowBlur: 18
                   },
                   edgeLabel: {
                     show: true,
                     formatter: ({ data }) => data.value,
-                    color: '#334155',
-                    fontSize: 11
+                    color: '#dbeafe',
+                    fontSize: 12,
+                    fontWeight: 700,
+                    backgroundColor: 'rgba(5, 11, 20, 0.84)',
+                    padding: [4, 8],
+                    borderRadius: 999,
+                    textBorderColor: 'rgba(2, 6, 23, 0.92)',
+                    textBorderWidth: 4,
+                    shadowColor: 'rgba(2, 8, 23, 0.16)',
+                    shadowBlur: 12
                   },
                   lineStyle: {
-                    color: '#94a3b8',
-                    width: 2,
+                    color: '#8cc6ff',
+                    width: 2.6,
                     curveness: 0.08
                   },
                   emphasis: {
@@ -478,7 +635,33 @@ const renderGraphPage = (session: AgentSession): string => {
                 }
               ]
             });
+
+            chart.on('graphRoam', () => {
+              const currentZoom = Number(chart?.getOption?.()?.series?.[0]?.zoom ?? graphZoom);
+              graphZoom = clampGraphZoom(currentZoom);
+              syncGraphZoomLabel();
+            });
+
+            syncGraphZoomLabel();
           };
+
+          document.addEventListener('click', (event) => {
+            const target = event.target instanceof Element ? event.target.closest('[data-graph-zoom]') : null;
+
+            if (!target) {
+              return;
+            }
+
+            const zoomAction = target.getAttribute('data-graph-zoom');
+
+            if (zoomAction === 'in') {
+              updateGraphZoom(graphZoom + graphZoomStep);
+            } else if (zoomAction === 'out') {
+              updateGraphZoom(graphZoom - graphZoomStep);
+            } else {
+              updateGraphZoom(1);
+            }
+          });
 
           window.addEventListener('resize', () => {
             if (chart) {

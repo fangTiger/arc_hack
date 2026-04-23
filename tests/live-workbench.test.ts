@@ -184,7 +184,7 @@ describe('live workbench view model', () => {
 
     expect(viewModel.headline).toBe('等待分析开始');
     expect(viewModel.summary).toContain('待导入');
-    expect(viewModel.summary).toContain('导入仓');
+    expect(viewModel.summary).toContain('线索入口');
     expect(viewModel.eventTypeValue).toBe('待识别');
     expect(viewModel.sourceModeValue).toBe('待输入');
   });
@@ -392,7 +392,7 @@ describe('live workbench view model', () => {
     expect(getDisplaySourceTitle(session)).toBe('Arc 为 AI 代理引入无 gas 小额支付，并接入 Circle 作为结算层');
     expect(getDisplayHeadline(session)).toBe('事件判断已生成');
     expect(createLiveWorkbenchViewModel(session, supportedSourceLabels).summary).toBe(
-      '正文分析已完成，可在下方查看关键判断与证据摘录。'
+      '正文分析已完成，可在下方查看核心结论与证据锚点。'
     );
   });
 
@@ -417,7 +417,7 @@ describe('live workbench view model', () => {
     expect(getDisplayHeadline(session)).toBe('等待事件判断生成');
     expect(viewModel.headline).toBe('等待事件判断生成');
     expect(viewModel.headline).not.toContain('这是一段非常长的手动输入正文');
-    expect(viewModel.summary).toContain('事件判断正在生成');
+    expect(viewModel.summary).toContain('主体和证据正在回填');
   });
 
   it('should compress long summaries into briefing while preserving full summary for details', () => {

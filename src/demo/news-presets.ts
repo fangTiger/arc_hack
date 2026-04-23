@@ -1,5 +1,5 @@
 import type { ExtractionRequest } from '../domain/extraction/types.js';
-import type { SupportedNewsSite } from '../domain/news-import/types.js';
+import type { ImportedArticle, SupportedNewsSite } from '../domain/news-import/types.js';
 
 export type LiveNewsPreset = {
   id: string;
@@ -9,6 +9,14 @@ export type LiveNewsPreset = {
   excerpt: string;
   text: string;
   request: ExtractionRequest;
+  origin?: 'static' | 'dynamic';
+};
+
+export type LiveNewsPresetSeed = {
+  id: string;
+  title: string;
+  articleUrl: string;
+  sourceSite: SupportedNewsSite;
 };
 
 const createPresetRequest = (preset: {
@@ -16,6 +24,8 @@ const createPresetRequest = (preset: {
   text: string;
   articleUrl: string;
   sourceSite: SupportedNewsSite;
+  importStatus?: 'live' | 'cache';
+  cachedAt?: string;
 }): ExtractionRequest => ({
   sourceType: 'news',
   title: preset.title,
@@ -23,9 +33,55 @@ const createPresetRequest = (preset: {
   metadata: {
     articleUrl: preset.articleUrl,
     sourceSite: preset.sourceSite,
-    importMode: 'preset'
+    importMode: 'preset',
+    ...(preset.importStatus ? { importStatus: preset.importStatus } : {}),
+    ...(preset.cachedAt ? { cachedAt: preset.cachedAt } : {})
   }
 });
+
+export const createLiveNewsPresetFromImportedArticle = (
+  seed: LiveNewsPresetSeed,
+  article: ImportedArticle
+): LiveNewsPreset => ({
+  id: seed.id,
+  title: article.title,
+  sourceSite: article.sourceSite,
+  articleUrl: seed.articleUrl,
+  excerpt: article.excerpt ?? article.text.split('\n\n')[0] ?? article.title,
+  text: article.text,
+  request: createPresetRequest({
+    title: article.title,
+    text: article.text,
+    articleUrl: seed.articleUrl,
+    sourceSite: article.sourceSite,
+    ...(article.importStatus ? { importStatus: article.importStatus } : {}),
+    ...(article.cachedAt ? { cachedAt: article.cachedAt } : {})
+  }),
+  origin: 'dynamic'
+});
+
+export const ARC_DYNAMIC_PRESET_SOURCES: LiveNewsPresetSeed[] = [
+  {
+    id: 'dynamic-panews-arc-strategy',
+    title: 'A Conversation with Circle CEO: Profit Model, Bank Competition, and Arc Chain Strategy',
+    articleUrl: 'https://www.panewslab.com/en/articles/b14323a1-d8b8-42ed-880e-b5fbd6fb13fb',
+    sourceSite: 'panews'
+  },
+  {
+    id: 'dynamic-panews-stable-arc',
+    title: 'IOSG In-depth Interpretation of Stablecoin Public Chains: Plasma, Stable, and Arc',
+    articleUrl: 'https://www.panewslab.com/en/articles/b81cd7a1-1bfc-4a5f-9384-05fde64e286d',
+    sourceSite: 'panews'
+  },
+  {
+    id: 'dynamic-chaincatcher-arc-points',
+    title: 'The first stock of stablecoins, Circle, has officially launched the new public chain ARC points system, and the interactive guide is here',
+    articleUrl: 'https://www.chaincatcher.com/en/article/2256854',
+    sourceSite: 'chaincatcher'
+  }
+];
+
+export const ARC_RECOMMENDED_TRIAL_LINKS: string[] = ARC_DYNAMIC_PRESET_SOURCES.map((source) => source.articleUrl);
 
 export const liveNewsPresets: LiveNewsPreset[] = [
   {
@@ -46,7 +102,8 @@ export const liveNewsPresets: LiveNewsPreset[] = [
       ].join('\n\n'),
       articleUrl: 'https://wublock123.com/p/654321',
       sourceSite: 'wublock123'
-    })
+    }),
+    origin: 'static'
   },
   {
     id: 'panews-funding-round',
@@ -66,7 +123,8 @@ export const liveNewsPresets: LiveNewsPreset[] = [
       ].join('\n\n'),
       articleUrl: 'https://www.panewslab.com/articles/0123456789',
       sourceSite: 'panews'
-    })
+    }),
+    origin: 'static'
   },
   {
     id: 'chaincatcher-asia-expansion',
@@ -86,6 +144,7 @@ export const liveNewsPresets: LiveNewsPreset[] = [
       ].join('\n\n'),
       articleUrl: 'https://www.chaincatcher.com/article/1234567.html',
       sourceSite: 'chaincatcher'
-    })
+    }),
+    origin: 'static'
   }
 ];

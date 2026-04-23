@@ -8,6 +8,7 @@ import { createApp } from '../src/app.js';
 import { loadRuntimeEnv } from '../src/config/env.js';
 import { buildAgentGraph, type AgentSession } from '../src/demo/agent-graph.js';
 import { LiveAgentSessionService, type LiveAgentSession } from '../src/demo/live-session.js';
+import { ARC_RECOMMENDED_TRIAL_LINKS } from '../src/demo/news-presets.js';
 import type { AgentGraphRunOptions, AgentGraphRunResult } from '../src/demo/agent-session-runner.js';
 import type { ExtractionRequest } from '../src/domain/extraction/types.js';
 import type { ImportedArticle } from '../src/domain/news-import/index.js';
@@ -142,7 +143,13 @@ const createTestHarness = (overrides: {
       agentGraphStore,
       liveSessionStore,
       liveSessionService,
-      newsImporter: overrides.newsImporter
+      newsImporter:
+        overrides.newsImporter ??
+        ({
+          import: vi.fn(async () => {
+            throw new Error('test importer fallback');
+          })
+        } satisfies { import: (articleUrl: string) => Promise<ImportedArticle> })
     }),
     liveSessionStore,
     workingDirectory
@@ -150,7 +157,7 @@ const createTestHarness = (overrides: {
 };
 
 describe('createLiveRouter', () => {
-  it('should render the trusted research workbench shell', async () => {
+  it('should render the Arc Signal Desk shell', async () => {
     const { app } = createTestHarness();
 
     const response = await invokeApp(app, {
@@ -160,30 +167,73 @@ describe('createLiveRouter', () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.headers['cache-control']).toContain('no-store');
-    expect(response.text).toContain('可信投研工作台');
+    expect(response.text).toContain('Arc Signal Desk');
+    expect(response.text).toContain('<html lang="zh-CN" data-theme="light">');
+    expect(response.text).toContain('rel="icon"');
+    expect(response.text).toContain('rel="shortcut icon"');
+    expect(response.text).toContain('/demo/live/brand/logo.png');
+    expect(response.text).toContain('id="theme-toggle"');
+    expect(response.text).toContain('aria-label="切换到夜航"');
+    expect(response.text).toContain('data-theme-icon="moon"');
+    expect(response.text).toContain("window.localStorage.getItem('live-workbench-theme') === 'dark'");
     expect(response.text).not.toContain('Live Agent Console');
     expect(response.text).not.toContain('比赛版');
     expect(response.text).not.toContain('<section class="hero">');
-    expect(response.text).toContain('顶部工具带');
+    expect(response.text).toContain('决策总览');
     expect(response.text).toContain('toolbelt-shell');
     expect(response.text).toContain('toolbelt-actions');
+    expect(response.text).toContain('command-deck');
+    expect(response.text).toContain('workbench-shell');
+    expect(response.text).toContain('id="control-card-current-object"');
+    expect(response.text).toContain('id="control-card-source-status"');
+    expect(response.text).toContain('id="control-card-run-status"');
+    expect(response.text).toContain('id="control-card-credential-status"');
+    expect(response.text).toContain('id="control-card-next-action"');
+    expect(response.text).toContain('data-card-tone="idle"');
     expect(response.text).toContain('当前对象');
     expect(response.text).toContain('来源状态');
     expect(response.text).toContain('运行状态');
     expect(response.text).toContain('凭证状态');
     expect(response.text).toContain('下一步动作');
-    expect(response.text).toContain('导入仓');
+    expect(response.text).toContain('线索入口');
     expect(response.text).toContain('source-drawer');
-    expect(response.text).toContain('导入来源');
+    expect(response.text).toContain('来源信息');
     expect(response.text).not.toContain('分析入口');
-    expect(response.text).toContain('情报侧栏');
-    expect(response.text).toContain('分析凭证');
-    expect(response.text).toContain('分析流程');
+    expect(response.text).toContain('信号侧栏');
+    expect(response.text).toContain('signal-sidebar');
+    expect(response.text).not.toContain('右侧保持稳定顺序');
+    expect(response.text).toContain('调用凭证');
+    expect(response.text).toContain('执行轨迹');
     expect(response.text).toContain('待导入');
     expect(response.text).toContain('待分析');
     expect(response.text).toContain('分析中');
     expect(response.text).toContain('分析完成');
     expect(response.text).toContain('分析失败');
+    expect(response.text).toContain('id="overall-status-progressbar"');
+    expect(response.text).toContain('id="overall-status-progress"');
+    expect(response.text).toContain('id="overall-status-meta"');
+    expect(response.text).toContain('data-status-icon="idle"');
+    expect(response.text).toContain('0 / 5 阶段');
+    expect(response.text).toContain('id="control-stepper"');
+    expect(response.text).toContain('id="control-step-create"');
+    expect(response.text).toContain('id="control-step-summary"');
+    expect(response.text).toContain('id="control-step-graph"');
+    expect(response.text).toContain('data-stage-status="pending"');
+    expect(response.text).toMatch(
+      /html\[data-theme="light"\] \.status-chip\[data-status-tone="completed"\] \.status-chip-label \{\s*color: #065f46;/
+    );
+    expect(response.text).toMatch(
+      /html\[data-theme="light"\] \.status-chip\[data-status-tone="failed"\] \.status-chip-label \{\s*color: #9f1239;/
+    );
+    expect(response.text).toMatch(
+      /html\[data-theme="light"\] \.control-card\[data-card-tone="running"\] \.control-value \{\s*color: #0f766e;/
+    );
+    expect(response.text).toMatch(
+      /html\[data-theme="light"\] \.control-card\[data-card-tone="completed"\] \.control-value \{\s*color: #065f46;/
+    );
+    expect(response.text).toMatch(
+      /html\[data-theme="light"\] \.control-card\[data-card-tone="failed"\] \.control-value \{\s*color: #9f1239;/
+    );
     expect(response.text).toContain('文章链接');
     expect(response.text).toContain('手动文本');
     expect(response.text).toContain('<option value="manual" selected>');
@@ -203,16 +253,16 @@ describe('createLiveRouter', () => {
     expect(response.text).not.toContain('detail-dialog');
     expect(response.text).not.toContain('点击查看详情');
     expect(response.text).not.toContain('完整内容');
-    expect(response.text).toContain('事件总览');
-    expect(response.text).toContain('关键判断');
-    expect(response.text).toContain('证据摘录');
-    expect(response.text).toContain('延展阅读');
+    expect(response.text).toContain('执行摘要');
+    expect(response.text).toContain('核心结论');
+    expect(response.text).toContain('证据锚点');
+    expect(response.text).toContain('深度解读');
     expect(response.text).toContain('完整摘要、延展判断与复核提示会在这里继续展开');
     expect(response.text).toContain('main-reading-rail');
-    expect(response.text).toContain('辅助关系图');
-    expect(response.text).toContain('关键判断需要证据挂钩');
-    expect(response.text).toContain('判断卡会先保留为待核验提示');
-    expect(response.text).toContain('证据摘录会固定留在主区');
+    expect(response.text).toContain('关系导航');
+    expect(response.text).toContain('核心结论需要证据挂钩');
+    expect(response.text).toContain('结论卡会先保留为待核验提示');
+    expect(response.text).toContain('证据锚点会固定留在主区');
     expect(response.text).toContain('吴说获悉：香港虚拟资产 ETF 本周净流入创新高');
     expect(response.text).toContain('香港比特币与以太坊现货 ETF 本周净流入达到近三个月高点');
     expect(response.text).toContain('"importMode":"preset"');
@@ -240,6 +290,13 @@ describe('createLiveRouter', () => {
     expect(response.text).toContain('lastTerminalSnapshotMeta');
     expect(response.text).toContain('shouldAcceptLiveSnapshot');
     expect(response.text).toContain('data-graph-expand');
+    expect(response.text).toContain('data-graph-zoom="out"');
+    expect(response.text).toContain('data-graph-zoom="in"');
+    expect(response.text).toContain('data-graph-zoom="reset"');
+    expect(response.text).toContain('id="graph-zoom-label"');
+    expect(response.text).toContain('textBorderWidth');
+    expect(response.text).toContain('shadowBlur');
+    expect(response.text).toContain('fontWeight: 700');
     expect(response.text).toContain('只有新结果成功返回后才替换当前工作台');
     expect(response.text).toContain('本轮失败，已保留上一版结果');
     expect(response.text).toContain('renderCredentials(displaySession ?? session)');
@@ -251,13 +308,20 @@ describe('createLiveRouter', () => {
     expect(response.text).toContain('原始片段');
     expect(response.text).toContain('直接启动分析');
     expect(response.text).toContain('查看原文');
-    expect(response.text).toContain('展开辅助关系图');
-    expect(response.text).toContain('展开关系图');
+    expect(response.text).toContain('展开关系导航');
+    expect(response.text).not.toContain('展开关系图');
     expect(response.text).toContain('@media (max-width: 720px)');
     expect(response.text).not.toContain('滚轮缩放，拖动画布可查看细节。graphUrl');
     expect(response.text).not.toContain('把 agent 运行过程直接录进同一块屏幕');
     expect(response.text).not.toContain('支持白名单链接、手动文本与预置样本。导入边界会在这里明确展示。');
     expect(response.text).not.toContain('白名单链接');
+    expect(response.text).not.toContain('可信投研工作台');
+    expect(response.text).not.toContain('导入仓');
+    expect(response.text).not.toContain('事件总览');
+    expect(response.text).not.toContain('关键判断');
+    expect(response.text).not.toContain('证据摘录');
+    expect(response.text).not.toContain('情报侧栏');
+    expect(response.text).not.toContain('辅助关系图');
 
     const openGraphModalMatch = response.text.match(/const openGraphModal = \(session\) => \{([\s\S]*?)\n        \};/);
 
@@ -268,6 +332,54 @@ describe('createLiveRouter', () => {
     expect(openGraphModalMatch?.[1].indexOf("graphModal.classList.remove('hidden');")).toBeLessThan(
       openGraphModalMatch?.[1].indexOf('renderGraphSurface(graphModalPreview, session, {') ?? Number.POSITIVE_INFINITY
     );
+  });
+
+  it('should render Arc branding, dynamic presets and recommended trial links', async () => {
+    const dynamicTitle = 'A Conversation with Circle CEO: Profit Model, Bank Competition, and Arc Chain Strategy';
+    const { app } = createTestHarness({
+      newsImporter: {
+        import: vi.fn(async (articleUrl: string) => {
+          if (articleUrl === ARC_RECOMMENDED_TRIAL_LINKS[0]) {
+            return {
+              sourceUrl: articleUrl,
+              sourceSite: 'panews',
+              sourceType: 'news',
+              title: dynamicTitle,
+              text: 'Circle discusses Arc chain strategy and stablecoin settlement infrastructure.',
+              excerpt: 'Circle discusses Arc chain strategy.',
+              importStatus: 'live'
+            } satisfies ImportedArticle;
+          }
+
+          throw new Error('fallback');
+        })
+      }
+    });
+
+    const response = await invokeApp(app, {
+      method: 'GET',
+      path: '/demo/live'
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.text).toContain('Arc');
+    expect(response.text).toContain('The Economic OS');
+    expect(response.text).toContain('推荐试跑链接');
+    expect(response.text).toContain(ARC_RECOMMENDED_TRIAL_LINKS[0]);
+    expect(response.text).toContain('trial-fill-button');
+    expect(response.text).toContain(dynamicTitle);
+  });
+
+  it('should serve the shared Arc logo asset for page branding and favicon', async () => {
+    const { app } = createTestHarness();
+
+    const response = await invokeApp(app, {
+      method: 'GET',
+      path: '/demo/live/brand/logo.png'
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['content-type']).toContain('image/png');
   });
 
   it('should create a live session, expose latest and detail endpoints, and return 404 when latest is missing', async () => {
@@ -519,8 +631,8 @@ describe('createLiveRouter', () => {
       importStatus: 'cache',
       cachedAt: importedArticle.cachedAt
     });
-    expect(pageResponse.text).toContain('导入状态：实时抓取');
-    expect(pageResponse.text).toContain('导入状态：缓存回退');
+    expect(pageResponse.text).toContain('实时抓取');
+    expect(pageResponse.text).toContain('缓存回退');
     expect(pageResponse.text).toContain('缓存时间');
   });
 

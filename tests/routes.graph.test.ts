@@ -115,7 +115,7 @@ const createTestAppWithSessions = async (sessions: AgentSession[]) => {
 };
 
 describe('createGraphRouter', () => {
-  it('should render the latest graph page as a relationship browser with a workbench return entry', async () => {
+  it('should render the latest graph page as a navigation browser with a Desk return entry', async () => {
     const app = await createTestApp();
 
     const response = await invokeApp(app, {
@@ -125,17 +125,25 @@ describe('createGraphRouter', () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.text).toContain('session-graph');
-    expect(response.text).toContain('返回工作台');
+    expect(response.text).toContain('/demo/live/brand/logo.png');
+    expect(response.text).toContain('The Economic OS');
+    expect(response.text).toContain('返回 Arc Signal Desk');
     expect(response.text).toContain('/demo/live');
     expect(response.text).toContain('graph-canvas');
     expect(response.text).toContain('cdn.jsdelivr.net/npm/echarts@5');
     expect(response.text).toContain('roam: true');
     expect(response.text).toContain('滚轮缩放');
     expect(response.text).toContain('拖动画布');
-    expect(response.text).toContain('辅助关系浏览器');
-    expect(response.text).toContain('关系清单');
-    expect(response.text).toContain('来源元数据');
-    expect(response.text).toContain('导入来源');
+    expect(response.text).toContain('data-graph-zoom="out"');
+    expect(response.text).toContain('data-graph-zoom="in"');
+    expect(response.text).toContain('data-graph-zoom="reset"');
+    expect(response.text).toContain('id="graph-zoom-label"');
+    expect(response.text).toContain('textBorderWidth');
+    expect(response.text).toContain('shadowBlur');
+    expect(response.text).toContain('关系导航器');
+    expect(response.text).toContain('连接清单');
+    expect(response.text).toContain('来源元信息');
+    expect(response.text).toContain('来源信息');
     expect(response.text).toContain('articleUrl');
     expect(response.text).toContain('sourceSite');
     expect(response.text).toContain('importMode');
@@ -180,7 +188,7 @@ describe('createGraphRouter', () => {
     expect(response.text).toContain('缓存回退');
     expect(response.text).toContain('cachedAt');
     expect(response.text).toContain('2026-04-22T11:22:33.000Z');
-    expect(response.text).toContain('返回工作台');
+    expect(response.text).toContain('返回 Arc Signal Desk');
     expect(response.text).toContain('derived 仅用于浏览连通性，不代表真实抽取关系');
   });
 
@@ -207,9 +215,9 @@ describe('createGraphRouter', () => {
     });
 
     expect(okResponse.statusCode).toBe(200);
-    expect(okResponse.text).toContain('辅助关系浏览器');
+    expect(okResponse.text).toContain('关系导航器');
     expect(okResponse.text).toContain('Legacy session');
-    expect(okResponse.text).toContain('未记录导入来源');
+    expect(okResponse.text).toContain('未记录来源信息');
     expect(okResponse.text).not.toContain('https://wublock123.com/p/654321');
     expect(missingResponse.statusCode).toBe(404);
     expect(missingResponse.text).toContain('Agent graph session not found');

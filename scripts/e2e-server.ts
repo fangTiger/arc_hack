@@ -4,12 +4,14 @@ import { join } from 'node:path';
 
 import { createApp } from '../src/app.js';
 import { loadRuntimeEnv } from '../src/config/env.js';
+import { ARC_DYNAMIC_PRESET_SOURCES } from '../src/demo/news-presets.js';
 import { LiveAgentSessionService, type LiveAgentSessionCreateInput } from '../src/demo/live-session.js';
 import type { AgentSessionRun } from '../src/demo/agent-graph.js';
 import {
   runAgentGraphSession as defaultRunAgentGraphSession,
   type AgentGraphRunOptions
 } from '../src/demo/agent-session-runner.js';
+import type { ImportedArticle } from '../src/domain/news-import/index.js';
 import { FileAgentGraphStore } from '../src/store/agent-graph-store.js';
 import { FileLiveAgentSessionStore } from '../src/store/live-session-store.js';
 
@@ -219,11 +221,47 @@ const liveSessionService = {
   }
 } as LiveAgentSessionService;
 
+const e2ePresetArticleMap = new Map<string, ImportedArticle>(
+  ARC_DYNAMIC_PRESET_SOURCES.map((source) => [
+    source.articleUrl,
+    {
+      sourceUrl: source.articleUrl,
+      sourceSite: source.sourceSite,
+      sourceType: 'news',
+      title: source.title,
+      text: `${source.title}。Arc 与 Circle 相关动态会被整理为可直接试跑的预置资讯。`,
+      excerpt: `${source.title} 的试跑预置内容。`,
+      importStatus: 'live'
+    }
+  ])
+);
+
+const e2eNewsImporter = {
+  async import(articleUrl: string): Promise<ImportedArticle> {
+    const presetArticle = e2ePresetArticleMap.get(articleUrl);
+
+    if (presetArticle) {
+      return presetArticle;
+    }
+
+    return {
+      sourceUrl: articleUrl,
+      sourceSite: articleUrl.includes('chaincatcher') ? 'chaincatcher' : articleUrl.includes('wublock123') ? 'wublock123' : 'panews',
+      sourceType: 'news',
+      title: 'E2E imported article',
+      text: 'E2E imported article body for link-mode verification.',
+      excerpt: 'E2E imported article excerpt.',
+      importStatus: 'live'
+    };
+  }
+};
+
 const app = createApp({
   runtimeEnv: mockRuntimeEnv,
   agentGraphStore,
   liveSessionStore,
-  liveSessionService
+  liveSessionService,
+  newsImporter: e2eNewsImporter
 });
 
 const server = app.listen(mockRuntimeEnv.port, () => {
