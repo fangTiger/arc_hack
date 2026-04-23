@@ -253,6 +253,16 @@ describe('createLiveRouter', () => {
     expect(response.text).toContain('@media (max-width: 720px)');
     expect(response.text).not.toContain('滚轮缩放，拖动画布可查看细节。graphUrl');
     expect(response.text).not.toContain('把 agent 运行过程直接录进同一块屏幕');
+
+    const openGraphModalMatch = response.text.match(/const openGraphModal = \(session\) => \{([\s\S]*?)\n        \};/);
+
+    expect(openGraphModalMatch?.[1]).toContain("graphModal.classList.remove('hidden');");
+    expect(openGraphModalMatch?.[1]).toContain("graphModal.setAttribute('aria-hidden', 'false');");
+    expect(openGraphModalMatch?.[1]).toContain('requestAnimationFrame(() => {');
+    expect(openGraphModalMatch?.[1]).toContain('state.graphModalChart?.resize();');
+    expect(openGraphModalMatch?.[1].indexOf("graphModal.classList.remove('hidden');")).toBeLessThan(
+      openGraphModalMatch?.[1].indexOf('renderGraphSurface(graphModalPreview, session, {') ?? Number.POSITIVE_INFINITY
+    );
   });
 
   it('should create a live session, expose latest and detail endpoints, and return 404 when latest is missing', async () => {

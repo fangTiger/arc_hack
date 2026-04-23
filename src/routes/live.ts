@@ -2591,14 +2591,22 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
             return;
           }
 
-          renderGraphSurface(graphModalPreview, session, {
-            chartKey: 'graphModalChart',
-            canvasId: 'graph-modal-canvas',
-            canvasClass: 'graph-modal-canvas',
-            expandable: false
-          });
           graphModal.classList.remove('hidden');
           graphModal.setAttribute('aria-hidden', 'false');
+
+          requestAnimationFrame(() => {
+            if (graphModal.classList.contains('hidden')) {
+              return;
+            }
+
+            renderGraphSurface(graphModalPreview, session, {
+              chartKey: 'graphModalChart',
+              canvasId: 'graph-modal-canvas',
+              canvasClass: 'graph-modal-canvas',
+              expandable: false
+            });
+            state.graphModalChart?.resize();
+          });
         };
 
         const renderStages = (session) => {
