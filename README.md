@@ -67,7 +67,7 @@ open http://127.0.0.1:3000/demo/live
 - `PAYMENT_MODE=gateway` 时，页面只保证整体状态和最终证据，不承诺逐步 payment 回调
 - 若已有 `queued` 或 `running` 的 live session，再次创建会返回 `409` 和当前 `sessionId`
 
-如果要直接生成 `50+` 次调用与 `50+` 笔 mock receipt 证据：
+如果要直接生成 mock receipt 证据：
 ```bash
 DEMO_REPEAT_COUNT=6 npm run demo:receipt:mock
 ```
