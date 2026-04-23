@@ -1,6 +1,6 @@
 ## MODIFIED Requirements
 
-### Requirement: 支持页面触发的 Live Console
+### Requirement: 支持页面触发的 Live Agent 演示台
 系统 MUST 提供一个页面触发的 live console，让演示者输入单条文本或白名单文章链接后，在同一页面里按阶段观察 agent session 的运行进度、支付证据和最终图谱。
 
 #### Scenario: live console 以资讯分析工作台产品模式呈现
