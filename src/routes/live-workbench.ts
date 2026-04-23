@@ -186,13 +186,18 @@ export function getDisplayHeadline(session: LiveWorkbenchSessionLike | null | un
   }
 
   const sourceTitle = session.source?.title?.trim();
+  const summaryReady = getStepStatus(session, 'summary') === 'completed' && getSummary(session).trim();
 
   if (sourceTitle) {
     return sourceTitle;
   }
 
-  if (getStepStatus(session, 'summary') === 'completed' && getSummary(session).trim()) {
+  if (summaryReady) {
     return '事件判断已生成';
+  }
+
+  if (session.source?.metadata?.importMode === 'manual') {
+    return session.status === 'failed' ? '分析未完成' : '等待事件判断生成';
   }
 
   return extractSentences(session.source?.text ?? '')[0] ?? '等待事件判断生成';
@@ -306,7 +311,7 @@ export function getTotalPrice(session: LiveWorkbenchSessionLike | null | undefin
   return `$${total.toFixed(3)}`;
 }
 
-const buildPreviewText = (value: string, limit = 92): string => {
+export function buildPreviewText(value: string, limit = 92): string {
   const normalized = String(value ?? '').replace(/\s+/g, ' ').trim();
 
   if (!normalized) {
@@ -314,7 +319,7 @@ const buildPreviewText = (value: string, limit = 92): string => {
   }
 
   return normalized.length > limit ? `${normalized.slice(0, limit - 1).trimEnd()}…` : normalized;
-};
+}
 
 export function buildJudgments(session: LiveWorkbenchSessionLike | null | undefined): LiveWorkbenchJudgment[] {
   if (!session || getStepStatus(session, 'summary') !== 'completed') {

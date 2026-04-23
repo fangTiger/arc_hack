@@ -141,6 +141,34 @@ const normalizeGatewayPayment = (
   };
 };
 
+const buildGatewayPaymentFailureMessage = (
+  status: number,
+  statusText: string,
+  payload: unknown
+): string => {
+  if (payload && typeof payload === 'object') {
+    const error = typeof (payload as { error?: unknown }).error === 'string' ? (payload as { error: string }).error.trim() : '';
+    const reason = typeof (payload as { reason?: unknown }).reason === 'string' ? (payload as { reason: string }).reason.trim() : '';
+    const message = typeof (payload as { message?: unknown }).message === 'string' ? (payload as { message: string }).message.trim() : '';
+    const parts = [...new Set([error, reason, message].filter(Boolean))];
+
+    if (parts.length > 0) {
+      return `Payment failed: ${parts.join(' | ')}`;
+    }
+  }
+
+  if (typeof payload === 'string' && payload.trim()) {
+    return `Payment failed: ${payload.trim()}`;
+  }
+
+  return statusText ? `Payment failed with status ${status}: ${statusText}` : `Payment failed with status ${status}.`;
+};
+
+type GatewayPayResult = Pick<
+  PayResult<GatewayPaidExtractionPayload<ExtractionResult>>,
+  'data' | 'amount' | 'formattedAmount' | 'transaction' | 'status'
+>;
+
 class GatewayBuyerImpl implements GatewayBuyer {
   private readonly client: GatewayBuyerClient;
 
@@ -185,6 +213,82 @@ class GatewayBuyerImpl implements GatewayBuyer {
     };
   }
 
+  private async payWithDiagnostics(
+    request: GatewayBuyerRequest,
+    probe: GatewayBuyerProbe
+  ): Promise<GatewayPayResult> {
+    const operationUrl = buildOperationUrl(this.config.baseUrl, request.operation);
+    const paymentPayloadFactory = (
+      this.client as GatewayBuyerClient & {
+        createPaymentPayload?: (
+          x402Version: number,
+          paymentRequirements: GatewayAcceptedOption
+        ) => Promise<{
+          x402Version: number;
+          payload: unknown;
+        }>;
+      }
+    ).createPaymentPayload;
+
+    if (!paymentPayloadFactory) {
+      return this.client.pay<GatewayPaidExtractionPayload<ExtractionResult>>(operationUrl, {
+        method: 'POST',
+        headers: {
+          'x-request-id': request.requestId
+        },
+        body: request.body
+      });
+    }
+
+    const paymentPayload = await paymentPayloadFactory.call(
+      this.client,
+      probe.paymentRequired.x402Version ?? 2,
+      probe.accepted
+    );
+    const paymentHeader = Buffer.from(
+      JSON.stringify({
+        ...paymentPayload,
+        resource: probe.paymentRequired.resource,
+        accepted: probe.accepted
+      })
+    ).toString('base64');
+    const response = await this.dependencies.fetch(operationUrl, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-request-id': request.requestId,
+        'Payment-Signature': paymentHeader
+      },
+      body: encodeJsonBody(request.body)
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      let payload: unknown = text;
+
+      if (text) {
+        try {
+          payload = JSON.parse(text) as unknown;
+        } catch {
+          payload = text;
+        }
+      }
+
+      throw new Error(buildGatewayPaymentFailureMessage(response.status, response.statusText, payload));
+    }
+
+    const payload = (await response.json()) as GatewayPaidExtractionPayload<ExtractionResult>;
+    const amount = BigInt(probe.accepted.amount);
+
+    return {
+      data: payload,
+      amount,
+      formattedAmount: formatAtomicUsdc(amount),
+      transaction: payload.payment.transaction,
+      status: response.status
+    };
+  }
+
   async payBatch(requests: GatewayBuyerRequest[]): Promise<GatewayBuyerBatchResult> {
     const probes: GatewayBuyerProbe[] = [];
 
@@ -211,17 +315,9 @@ class GatewayBuyerImpl implements GatewayBuyer {
 
     const payments: GatewayBuyerPayment[] = [];
 
-    for (const request of requests) {
-      const payResult = await this.client.pay<GatewayPaidExtractionPayload<ExtractionResult>>(
-        buildOperationUrl(this.config.baseUrl, request.operation),
-        {
-          method: 'POST',
-          headers: {
-            'x-request-id': request.requestId
-          },
-          body: request.body
-        }
-      );
+    for (const [index, request] of requests.entries()) {
+      const probe = probes[index]!;
+      const payResult = await this.payWithDiagnostics(request, probe);
       const payload = payResult.data;
 
       payments.push({

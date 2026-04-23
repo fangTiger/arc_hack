@@ -171,6 +171,34 @@ TBD - created by archiving change add-paid-knowledge-extraction-api. Update Purp
 - **则** 系统仍可基于本地缓存导入结果启动一次 live session
 - **且** 不依赖实时抓取远端网页
 
+#### Scenario: 长新闻不会让事件总览失控增长
+- **当** 用户提交一篇较长的新闻或研报正文
+- **则** 首屏 `事件总览` 只展示紧凑的事件标题与 `1-2` 句 briefing
+- **且** 完整摘要应被收纳到详情层，而不是直接占满首屏主卡
+- **且** briefing 需要保持明确的句数或长度上限，而不是仅依赖视觉截断
+
+#### Scenario: live console 采用结果优先的完整工作台布局
+- **当** 用户访问 live console 页面
+- **则** 页面主视觉应优先服务“快速判断”，而不是让输入区或长列表卡片占据主要空间
+- **且** 页面需要提供稳定的主阅读区、上下文侧栏与详情交互，减少“又长又窄”的滚动体验
+
+#### Scenario: 关键卡片通过详情层承载完整内容
+- **当** 页面展示关键判断、证据摘录、预置样本或完整摘要
+- **则** 首屏只展示摘要信息
+- **且** 用户可以通过弹窗、抽屉或等效详情层查看完整内容与上下文
+- **且** 首屏需要明确哪些卡片默认折叠、哪些信息只能在二级层展开
+
+#### Scenario: rich article 支持更高密度的图谱结果
+- **当** 输入文本包含较丰富的主体、产品、事件与关系
+- **则** 系统应输出明显高于弱文本场景的实体与关系密度
+- **且** 工作台与独立 graph 页面应能够稳定渲染这些 richer graph candidates，而不是过早收缩成极少数节点
+- **且** 图谱构造层需要显式执行 selection、ranking 与 pruning，而不是只把抽取结果直接映射成图
+
+#### Scenario: 图谱在 richer 数据下仍保持可读
+- **当** graph candidates 数量增加
+- **则** 页面仍应对可视化层进行排序、去噪与限幅
+- **且** derived 连边需要与 original 连边清晰区分，避免把展示层推断误读成原始抽取事实
+
 ### Requirement: 支持白名单新闻源链接导入
 系统 MUST 支持从有限白名单新闻站点导入文章链接，并将其转换为可直接进入 live session 的标准化文本输入。
 
@@ -234,4 +262,3 @@ TBD - created by archiving change add-paid-knowledge-extraction-api. Update Purp
 - **当** 页面读取 `latest`、指定 `sessionId` 或轮询某次由链接导入产生的 live session
 - **则** 返回的 live session payload 包含 `articleUrl`、`sourceSite` 和导入方式等来源元数据
 - **且** 这些元数据与对应的 agent session 产物保持一致
-

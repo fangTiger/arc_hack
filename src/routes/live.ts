@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import type { Response } from 'express';
 
 import type { RuntimeEnv } from '../config/env.js';
 import { demoCorpus } from '../demo/corpus.js';
@@ -11,6 +12,7 @@ import {
   type SupportedNewsSite
 } from '../domain/news-import/index.js';
 import {
+  buildPreviewText,
   buildJudgments,
   createLiveWorkbenchViewModel,
   extractSentences,
@@ -30,6 +32,7 @@ import {
   inferImportance,
   isGeneratedSourceTitle
 } from './live-workbench.js';
+import { createLivePollFailureTracker, isLiveSessionTerminalStatus } from './live-polling.js';
 import { getArcExplorerBaseUrl } from '../support/arc-explorer.js';
 import {
   collectRuntimeSensitiveValues,
@@ -266,8 +269,16 @@ const logLiveRoute = (
   console.log(`[live-route] ${message} ${JSON.stringify(safeDetails, null, 0)}`);
 };
 
+const applyNoStoreHeaders = (response: Response): void => {
+  response.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+  response.set('Pragma', 'no-cache');
+  response.set('Expires', '0');
+};
+
 const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
   const sample = demoCorpus[0];
+  const isLiveSessionTerminalStatusSource = isLiveSessionTerminalStatus.toString();
+  const createLivePollFailureTrackerSource = createLivePollFailureTracker.toString();
   const presetCards = liveNewsPresets
     .map(
       (preset) => `
@@ -1230,9 +1241,12 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
 
       <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
       <script>
+        const isLiveSessionTerminalStatus = ${isLiveSessionTerminalStatusSource};
+        const createLivePollFailureTracker = ${createLivePollFailureTrackerSource};
         const sample = ${JSON.stringify(sample)};
         const presets = ${JSON.stringify(liveNewsPresets)};
         const supportedSourceLabels = ${JSON.stringify(SUPPORTED_NEWS_SOURCE_LABELS)};
+        const pollFailureTracker = createLivePollFailureTracker();
         const state = {
           pollingTimer: null,
           sessionId: null,
@@ -1314,6 +1328,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
         ${getDisplaySource.toString()}
         ${getTotalPrice.toString()}
         ${getGraphPresentationMode.toString()}
+        ${buildPreviewText.toString()}
         ${buildJudgments.toString()}
         ${createLiveWorkbenchViewModel.toString()}
 
@@ -1819,9 +1834,20 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
 
         const stopPolling = () => {
           if (state.pollingTimer) {
-            clearInterval(state.pollingTimer);
+            clearTimeout(state.pollingTimer);
             state.pollingTimer = null;
           }
+        };
+
+        const scheduleNextPoll = (sessionId) => {
+          if (state.sessionId !== sessionId || state.pollingTimer) {
+            return;
+          }
+
+          state.pollingTimer = window.setTimeout(() => {
+            state.pollingTimer = null;
+            void pollSession(sessionId);
+          }, 1000);
         };
 
         const setLaunchControlsDisabled = (disabled) => {
@@ -1884,15 +1910,12 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           renderSource(session, workbenchModel);
           renderEntities(workbenchModel);
           renderGraph(session);
-
-          if (!session || session.status === 'completed' || session.status === 'failed') {
-            stopPolling();
-          }
         };
 
         const fetchJson = async (path, options) => {
           const response = await fetch(path, {
             headers: { 'content-type': 'application/json' },
+            cache: 'no-store',
             ...options
           });
 
@@ -1916,14 +1939,44 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           try {
             const session = await fetchJson('/demo/live/session/' + sessionId);
 
+            if (state.sessionId !== sessionId) {
+              return;
+            }
+
             if (session) {
+              const successResult = pollFailureTracker.recordSuccess(session.status);
               updateView(session);
+
+              if (successResult.shouldStopPolling) {
+                stopPolling();
+                return;
+              }
+
+              scheduleNextPoll(sessionId);
+              return;
+            }
+
+            const failureResult = pollFailureTracker.recordFailure(state.lastSession?.status);
+
+            if (failureResult.action !== 'interrupt') {
+              scheduleNextPoll(sessionId);
               return;
             }
 
             setInterruptedState();
             stopPolling();
           } catch (error) {
+            if (state.sessionId !== sessionId) {
+              return;
+            }
+
+            const failureResult = pollFailureTracker.recordFailure(state.lastSession?.status);
+
+            if (failureResult.action !== 'interrupt') {
+              scheduleNextPoll(sessionId);
+              return;
+            }
+
             formMessage.textContent = error.message;
             formMessage.className = 'error';
             setInterruptedState();
@@ -1934,10 +1987,8 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
         const startPolling = (sessionId) => {
           stopPolling();
           state.sessionId = sessionId;
+          pollFailureTracker.reset();
           void pollSession(sessionId);
-          state.pollingTimer = window.setInterval(() => {
-            void pollSession(sessionId);
-          }, 1000);
         };
 
         const createSession = async (payload) => {
@@ -2110,6 +2161,7 @@ export const createLiveRouter = (options: CreateLiveRouterOptions) => {
   const router = Router();
 
   router.get('/', (_request, response) => {
+    applyNoStoreHeaders(response);
     response.status(200).type('html').send(renderLiveConsolePage(options.runtimeEnv));
   });
 
@@ -2203,6 +2255,7 @@ export const createLiveRouter = (options: CreateLiveRouterOptions) => {
   });
 
   router.get('/session/latest', async (_request, response) => {
+    applyNoStoreHeaders(response);
     const session = await options.liveSessionService.readLatestSession();
 
     if (!session) {
@@ -2214,6 +2267,7 @@ export const createLiveRouter = (options: CreateLiveRouterOptions) => {
   });
 
   router.get('/session/active', async (_request, response) => {
+    applyNoStoreHeaders(response);
     const session = await options.liveSessionService.readActiveSession();
 
     if (!session) {
@@ -2225,6 +2279,7 @@ export const createLiveRouter = (options: CreateLiveRouterOptions) => {
   });
 
   router.get('/session/:sessionId', async (request, response) => {
+    applyNoStoreHeaders(response);
     const session = await options.liveSessionService.readSession(request.params.sessionId);
 
     if (!session) {

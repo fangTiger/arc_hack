@@ -159,6 +159,7 @@ describe('createLiveRouter', () => {
     });
 
     expect(response.statusCode).toBe(200);
+    expect(response.headers['cache-control']).toContain('no-store');
     expect(response.text).toContain('可信投研工作台');
     expect(response.text).not.toContain('Live Agent Console');
     expect(response.text).not.toContain('比赛版');
@@ -185,6 +186,7 @@ describe('createLiveRouter', () => {
     expect(response.text).toContain('填充示例');
     expect(response.text).toContain('/demo/live/session');
     expect(response.text).toContain('/demo/live/session/active');
+    expect(response.text).toContain("cache: 'no-store'");
     expect(response.text).toContain('graph-surface');
     expect(response.text).toContain('position: static;');
     expect(response.text).toContain('order: 2;');
@@ -192,6 +194,7 @@ describe('createLiveRouter', () => {
     expect(response.text).toContain('cdn.jsdelivr.net/npm/echarts@5');
     expect(response.text).toContain('https://testnet.arcscan.app');
     expect(response.text).toContain('分析连接已中断，请重新开始分析。');
+    expect(response.text).toContain('function buildPreviewText');
     expect(response.text).not.toContain('把 agent 运行过程直接录进同一块屏幕');
   });
 
@@ -261,11 +264,15 @@ describe('createLiveRouter', () => {
       }
     });
     expect(latestResponse.statusCode).toBe(200);
+    expect(latestResponse.headers['cache-control']).toContain('no-store');
     expect((latestResponse.json as LiveAgentSession).sessionId).toBe(sessionId);
     expect(activeResponse.statusCode).toBe(404);
+    expect(activeResponse.headers['cache-control']).toContain('no-store');
     expect(detailResponse.statusCode).toBe(200);
+    expect(detailResponse.headers['cache-control']).toContain('no-store');
     expect((detailResponse.json as LiveAgentSession).agentSession?.graph.nodes.length).toBeGreaterThanOrEqual(4);
     expect(missingResponse.statusCode).toBe(404);
+    expect(missingResponse.headers['cache-control']).toContain('no-store');
   });
 
   it('should accept manual text without a title and persist an empty source title', async () => {

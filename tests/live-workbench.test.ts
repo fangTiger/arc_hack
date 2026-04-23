@@ -205,6 +205,34 @@ describe('live workbench view model', () => {
     ).toBe('正文分析已完成，可在下方查看关键判断与证据摘录。');
   });
 
+  it('should hide manual source text from the event overview before summary completes', () => {
+    const longManualText =
+      '这是一段非常长的手动输入正文，用来模拟用户直接粘贴一整段新闻或研究材料。系统在大模型返回前不应该把这段正文首句直接展示在事件总览里，以免首屏看起来像在回显原文而不是分析结果。';
+    const session = createSession({
+      status: 'running',
+      source: {
+        sourceType: 'research',
+        text: longManualText,
+        metadata: {
+          importMode: 'manual'
+        }
+      },
+      steps: createSteps('running', 'pending', 'pending'),
+      preview: {}
+    });
+
+    const viewModel = createLiveWorkbenchViewModel(session, {
+      panews: 'PANews',
+      wublock123: '吴说',
+      chaincatcher: 'ChainCatcher'
+    });
+
+    expect(getDisplayHeadline(session)).toBe('等待事件判断生成');
+    expect(viewModel.headline).toBe('等待事件判断生成');
+    expect(viewModel.headline).not.toContain('这是一段非常长的手动输入正文');
+    expect(viewModel.summary).toContain('事件判断正在生成');
+  });
+
   it('should compress long summaries into briefing while preserving full summary for details', () => {
     const longSummary =
       '某协议完成新一轮战略合作，并计划在亚太市场扩展支付网络。Arc 负责代理侧支付编排，Circle 提供结算层与稳定币流转能力。团队同时披露了多阶段落地计划、渠道推进安排以及后续产品发布时间表。';
