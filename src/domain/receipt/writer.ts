@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { Address, Hex } from 'viem';
-import { createWalletClient, encodeFunctionData, http } from 'viem';
+import { createPublicClient, createWalletClient, encodeFunctionData, http } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 
 import type { RuntimeEnv } from '../../config/env.js';
@@ -67,26 +67,96 @@ class MockReceiptWriter implements ReceiptWriter {
 }
 
 class ArcReceiptWriter implements ReceiptWriter {
-  constructor(private readonly config: ArcReceiptWriterConfig) {}
+  private readonly account;
+  private readonly publicClient;
+  private readonly walletClient;
+  private nextNonce: number | undefined;
+  private nonceQueue: Promise<void> = Promise.resolve();
 
-  async write(input: ReceiptWriteInput): Promise<ReceiptWriteResult> {
-    const account = privateKeyToAccount(this.config.privateKey as Hex);
-    const walletClient = createWalletClient({
-      account,
-      transport: http(this.config.rpcUrl)
+  constructor(private readonly config: ArcReceiptWriterConfig) {
+    this.account = privateKeyToAccount(this.config.privateKey as Hex);
+    const transport = http(this.config.rpcUrl);
+
+    this.publicClient = createPublicClient({
+      transport
+    });
+    this.walletClient = createWalletClient({
+      account: this.account,
+      transport
+    });
+  }
+
+  private isAmbiguousBroadcastError(error: unknown): boolean {
+    if (!(error instanceof Error)) {
+      return false;
+    }
+
+    const message = error.message.toLowerCase();
+    return ['timeout', 'timed out', 'fetch', 'network', 'socket', 'connection reset', 'econnreset'].some((pattern) =>
+      message.includes(pattern)
+    );
+  }
+
+  private async withReservedNonce<T>(run: (nonce: number) => Promise<T>): Promise<T> {
+    const previousReservation = this.nonceQueue;
+    let releaseReservation: () => void = () => undefined;
+
+    this.nonceQueue = new Promise<void>((resolve) => {
+      releaseReservation = resolve;
     });
 
+    await previousReservation;
+
+    let reservedNonce: number | undefined;
+
     try {
-      const txHash = await walletClient.sendTransaction({
-        account,
-        chain: undefined,
-        to: this.config.contractAddress as Address,
-        data: encodeFunctionData({
-          abi: usageReceiptAbi,
-          functionName: 'recordReceipt',
-          args: [input.requestId, input.operation, input.payloadHash as Hex]
-        })
+      const pendingNonce = await this.publicClient.getTransactionCount({
+        address: this.account.address,
+        blockTag: 'pending'
       });
+
+      if (this.nextNonce === undefined || pendingNonce > this.nextNonce) {
+        this.nextNonce = pendingNonce;
+      }
+
+      reservedNonce = this.nextNonce ?? pendingNonce;
+      this.nextNonce = reservedNonce + 1;
+      return await run(reservedNonce);
+    } catch (error) {
+      const refreshedPendingNonce = await this.publicClient
+        .getTransactionCount({
+          address: this.account.address,
+          blockTag: 'pending'
+        })
+        .catch(() => undefined);
+
+      if (this.isAmbiguousBroadcastError(error) && reservedNonce !== undefined) {
+        this.nextNonce = Math.max(refreshedPendingNonce ?? reservedNonce + 1, reservedNonce + 1);
+      } else {
+        this.nextNonce = refreshedPendingNonce;
+      }
+
+      throw error;
+    } finally {
+      releaseReservation();
+    }
+  }
+
+  async write(input: ReceiptWriteInput): Promise<ReceiptWriteResult> {
+    try {
+      const txHash = await this.withReservedNonce((nonce) =>
+        this.walletClient.sendTransaction({
+          account: this.account,
+          chain: undefined,
+          nonce,
+          to: this.config.contractAddress as Address,
+          data: encodeFunctionData({
+            abi: usageReceiptAbi,
+            functionName: 'recordReceipt',
+            args: [input.requestId, input.operation, input.payloadHash as Hex]
+          })
+        })
+      );
 
       return {
         mode: 'arc',
