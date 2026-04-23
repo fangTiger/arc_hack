@@ -1,57 +1,86 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { execFileMock } = vi.hoisted(() => ({
-  execFileMock: vi.fn()
+const {
+  createWalletClientMock,
+  encodeFunctionDataMock,
+  httpMock,
+  privateKeyToAccountMock,
+  sendTransactionMock
+} = vi.hoisted(() => ({
+  createWalletClientMock: vi.fn(),
+  encodeFunctionDataMock: vi.fn(),
+  httpMock: vi.fn(),
+  privateKeyToAccountMock: vi.fn(),
+  sendTransactionMock: vi.fn()
 }));
 
-vi.mock('node:child_process', async () => {
-  const actual = await vi.importActual<typeof import('node:child_process')>('node:child_process');
+vi.mock('viem', () => ({
+  createWalletClient: createWalletClientMock,
+  encodeFunctionData: encodeFunctionDataMock,
+  http: httpMock
+}));
 
-  return {
-    ...actual,
-    execFile: execFileMock
-  };
-});
+vi.mock('viem/accounts', () => ({
+  privateKeyToAccount: privateKeyToAccountMock
+}));
 
 const loadReceiptWriterModule = async () => import('../src/domain/receipt/writer.js');
 
 const defaultTxHash = '0x1111111111111111111111111111111111111111111111111111111111111111';
+const defaultAccount = {
+  address: '0x1234567890123456789012345678901234567890'
+};
 
 beforeEach(() => {
-  delete process.env.CAST_BIN;
   vi.resetModules();
-  execFileMock.mockReset();
-  execFileMock.mockImplementation(
-    (_command: string, _args: string[], callback: (error: null, result: { stdout: string }) => void) => {
-      callback(null, {
-        stdout: JSON.stringify({
-          transactionHash: defaultTxHash
-        })
-      });
-    }
-  );
+  createWalletClientMock.mockReset();
+  encodeFunctionDataMock.mockReset();
+  httpMock.mockReset();
+  privateKeyToAccountMock.mockReset();
+  sendTransactionMock.mockReset();
+
+  sendTransactionMock.mockResolvedValue(defaultTxHash);
+  createWalletClientMock.mockReturnValue({
+    sendTransaction: sendTransactionMock
+  });
+  encodeFunctionDataMock.mockReturnValue('0xencoded');
+  httpMock.mockReturnValue({ transport: 'http' });
+  privateKeyToAccountMock.mockReturnValue(defaultAccount);
 });
 
 afterEach(() => {
-  delete process.env.CAST_BIN;
+  vi.clearAllMocks();
 });
 
 describe('portable receipt writer', () => {
-  it('parses transactionHash from cast JSON output instead of the first hex string', async () => {
-    const wrongHash = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
-    const expectedTxHash = '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+  it('redacts the private key when ARC receipt submission fails', async () => {
+    const leakedPrivateKey = '0x50fff75e326b04954b6d4b7fb4cbd046d943a640a88a4b3a2e59163dbbfcbece';
 
-    execFileMock.mockImplementationOnce(
-      (_command: string, _args: string[], callback: (error: null, result: { stdout: string }) => void) => {
-        callback(null, {
-          stdout: JSON.stringify({
-            blockHash: wrongHash,
-            transactionHash: expectedTxHash
-          })
-        });
-      }
-    );
+    sendTransactionMock.mockRejectedValueOnce(new Error(`signer rejected ${leakedPrivateKey}`));
 
+    const { createReceiptWriter } = await loadReceiptWriterModule();
+    const writer = createReceiptWriter({
+      mode: 'arc',
+      rpcUrl: 'https://arc.example',
+      contractAddress: '0x1234567890123456789012345678901234567890',
+      privateKey: leakedPrivateKey
+    });
+
+    const error = await writer
+      .write({
+        requestId: 'demo-001',
+        operation: 'summary',
+        payloadHash: '0x1111111111111111111111111111111111111111111111111111111111111111'
+      })
+      .then(() => null)
+      .catch((reason: unknown) => reason);
+
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain('[REDACTED]');
+    expect((error as Error).message).not.toContain(leakedPrivateKey);
+  });
+
+  it('signs and sends the receipt transaction with viem instead of shelling out to cast', async () => {
     const { createReceiptWriter } = await loadReceiptWriterModule();
     const writer = createReceiptWriter({
       mode: 'arc',
@@ -68,32 +97,24 @@ describe('portable receipt writer', () => {
       })
     ).resolves.toEqual({
       mode: 'arc',
-      txHash: expectedTxHash
+      txHash: defaultTxHash
     });
 
-    expect(execFileMock).toHaveBeenCalled();
-    expect(execFileMock.mock.calls[0]?.[1]).toContain('--json');
-    expect(execFileMock.mock.calls[0]?.[1]).not.toContain('--async');
-  });
-
-  it('uses CAST_BIN when provided', async () => {
-    process.env.CAST_BIN = 'cast-custom';
-
-    const { createReceiptWriter } = await loadReceiptWriterModule();
-    const writer = createReceiptWriter({
-      mode: 'arc',
-      rpcUrl: 'https://arc.example',
-      contractAddress: '0x1234567890123456789012345678901234567890',
-      privateKey: '0xabc'
+    expect(privateKeyToAccountMock).toHaveBeenCalledWith('0xabc');
+    expect(httpMock).toHaveBeenCalledWith('https://arc.example');
+    expect(encodeFunctionDataMock).toHaveBeenCalledWith({
+      abi: expect.any(Array),
+      functionName: 'recordReceipt',
+      args: [
+        'demo-001',
+        'summary',
+        '0x1111111111111111111111111111111111111111111111111111111111111111'
+      ]
     });
-
-    await writer.write({
-      requestId: 'demo-001',
-      operation: 'summary',
-      payloadHash: '0x1111111111111111111111111111111111111111111111111111111111111111'
+    expect(sendTransactionMock).toHaveBeenCalledWith({
+      account: defaultAccount,
+      to: '0x1234567890123456789012345678901234567890',
+      data: '0xencoded'
     });
-
-    expect(execFileMock).toHaveBeenCalled();
-    expect(execFileMock.mock.calls[0]?.[0]).toBe('cast-custom');
   });
 });

@@ -15,6 +15,11 @@ import type {
   SummaryExtractionResult
 } from './types.js';
 
+type StructuredAnalysisResult = {
+  entities: ExtractionEntity[];
+  relations: RelationExtractionResult['relations'];
+};
+
 const sentencePattern = /[^.!?]+[.!?]?/g;
 const getSentences = (request: ExtractionRequest): string[] => {
   const title = request.title?.trim();
@@ -40,7 +45,7 @@ const buildEntities = (request: ExtractionRequest): EntityExtractionResult => {
   };
 };
 
-const buildRelations = (request: ExtractionRequest): RelationExtractionResult => {
+const buildStructuredAnalysis = (request: ExtractionRequest): StructuredAnalysisResult => {
   const entities = buildEntities(request).entities;
   const rawRelations =
     !isWeakSignalRequest(request) && entities.length >= 2
@@ -54,20 +59,45 @@ const buildRelations = (request: ExtractionRequest): RelationExtractionResult =>
       : [];
 
   return {
-    kind: 'relations',
+    entities,
     relations: normalizeRelations(request, rawRelations, entities)
   };
 };
 
 export class MockKnowledgeExtractionProvider implements KnowledgeExtractionProvider {
+  private readonly structuredAnalysisCache = new Map<string, StructuredAnalysisResult>();
+
+  private getStructuredAnalysis(request: ExtractionRequest): StructuredAnalysisResult {
+    const cacheKey = JSON.stringify({
+      sourceType: request.sourceType,
+      title: request.title ?? '',
+      text: request.text
+    });
+    const cached = this.structuredAnalysisCache.get(cacheKey);
+
+    if (cached) {
+      return cached;
+    }
+
+    const analysis = buildStructuredAnalysis(request);
+    this.structuredAnalysisCache.set(cacheKey, analysis);
+    return analysis;
+  }
+
   async extract(operation: ExtractionOperation, request: ExtractionRequest): Promise<ExtractionResult> {
     switch (operation) {
       case 'summary':
         return buildSummary(request);
       case 'entities':
-        return buildEntities(request);
+        return {
+          kind: 'entities',
+          entities: this.getStructuredAnalysis(request).entities
+        };
       case 'relations':
-        return buildRelations(request);
+        return {
+          kind: 'relations',
+          relations: this.getStructuredAnalysis(request).relations
+        };
       default: {
         const exhaustiveCheck: never = operation;
         throw new Error(`Unsupported extraction operation: ${exhaustiveCheck}`);

@@ -165,6 +165,7 @@ graph 页面现在还会补充展示导入来源 metadata：
 - 来源站点 `sourceSite`
 - 导入标题
 - 导入方式 `importMode`
+- 若命中缓存回退，还会显示 `importStatus` / `cachedAt`，并注明 `derived` 仅用于连通性展示
 
 ## 6.5 录制 live console
 启动 seller 后直接打开：
@@ -190,7 +191,7 @@ http://127.0.0.1:3000/demo/live
 
 推荐录屏路径：
 1. 先用 `预置卡片` 录一段，突出“脱网也能演示”的稳定性。
-2. 完成后切到 `GET /demo/graph/latest`，展示来源元数据、可复制字段和可点击原文链接。
+2. 完成后切到 `GET /demo/graph/latest`，展示来源元数据、`importStatus` / `cachedAt`、可复制字段和可点击原文链接。
 3. 如网络稳定，再补一段 `文章链接` 模式，输入白名单新闻 URL，展示导入到图谱的完整路径。
 
 相关产物：

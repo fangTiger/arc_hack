@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -87,5 +87,24 @@ describe('FileLiveAgentSessionStore', () => {
     });
     expect(() => readFileSync(activePath, 'utf8')).toThrow();
     await expect(store.readSession('missing')).resolves.toBeNull();
+  });
+
+  it('should ignore and clean a stale active pointer that references a completed session', async () => {
+    const workingDirectory = mkdtempSync(join(tmpdir(), 'arc-hack-live-session-stale-active-'));
+    temporaryDirectories.push(workingDirectory);
+    const store = new FileLiveAgentSessionStore(join(workingDirectory, 'artifacts', 'live-console'));
+    const queuedSession = createSession();
+
+    await store.writeSession(queuedSession);
+
+    const completedSession = createSession({
+      status: 'completed',
+      updatedAt: '2026-04-22T10:00:03.000Z',
+      completedAt: '2026-04-22T10:00:03.000Z'
+    });
+    writeFileSync(store.getSessionPath(queuedSession.sessionId), JSON.stringify(completedSession, null, 2), 'utf8');
+
+    await expect(store.readActiveSession()).resolves.toBeNull();
+    expect(() => readFileSync(store.getActivePath(), 'utf8')).toThrow();
   });
 });

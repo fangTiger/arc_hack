@@ -17,6 +17,7 @@ export type AgentGraphEdge = {
   source: string;
   target: string;
   label: string;
+  provenance: 'original' | 'derived';
 };
 
 export type AgentSessionRun = {
@@ -70,6 +71,31 @@ const addNode = (nodes: Map<string, AgentGraphNodeType>, id: string, type: Agent
   }
 };
 
+const buildOriginalEdges = (relations: ExtractionRelation[]): AgentGraphEdge[] =>
+  relations.map((relation) => ({
+    id: `${relation.source}:${relation.relation}:${relation.target}`,
+    source: relation.source,
+    target: relation.target,
+    label: relation.relation,
+    provenance: 'original'
+  }));
+
+const buildDerivedEdges = (nodeIds: string[]): AgentGraphEdge[] => {
+  if (nodeIds.length <= 1) {
+    return [];
+  }
+
+  const rootId = nodeIds[0];
+
+  return nodeIds.slice(1, 4).map((targetId) => ({
+    id: `${rootId}:derived:提到:${targetId}`,
+    source: rootId,
+    target: targetId,
+    label: '提到',
+    provenance: 'derived'
+  }));
+};
+
 export const buildAgentGraph = (entities: ExtractionEntity[], relations: ExtractionRelation[]) => {
   const nodeTypes = new Map<string, AgentGraphNodeType>();
 
@@ -82,7 +108,12 @@ export const buildAgentGraph = (entities: ExtractionEntity[], relations: Extract
     addNode(nodeTypes, relation.target, nodeTypes.get(relation.target) ?? 'unknown');
   }
 
-  const nodeIds = [...nodeTypes.keys()];
+  const originalEdges = buildOriginalEdges(relations);
+  const hasOriginalEdges = originalEdges.length > 0;
+  const connectedNodeIds = hasOriginalEdges
+    ? new Set(originalEdges.flatMap((edge) => [edge.source, edge.target]))
+    : new Set(nodeTypes.keys());
+  const nodeIds = [...nodeTypes.keys()].filter((id) => connectedNodeIds.has(id));
   const radius = 170;
   const centerX = 240;
   const centerY = 220;
@@ -100,13 +131,7 @@ export const buildAgentGraph = (entities: ExtractionEntity[], relations: Extract
     } satisfies AgentGraphNode;
   });
 
-  const edges = relations.map((relation) => ({
-    id: `${relation.source}:${relation.relation}:${relation.target}`,
-    source: relation.source,
-    target: relation.target,
-    label: relation.relation
-  }) satisfies AgentGraphEdge);
+  const edges = hasOriginalEdges ? originalEdges : buildDerivedEdges(nodeIds);
 
   return { nodes, edges };
 };
-

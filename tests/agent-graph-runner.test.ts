@@ -81,7 +81,8 @@ describe('runAgentGraphSession', () => {
         id: 'Arc:mentions:Circle',
         source: 'Arc',
         target: 'Circle',
-        label: 'mentions'
+        label: 'mentions',
+        provenance: 'original'
       }
     ]);
     expect(persisted).toMatchObject({

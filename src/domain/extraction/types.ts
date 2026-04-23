@@ -7,6 +7,8 @@ export type SourceMetadata = {
   articleUrl?: string;
   sourceSite?: SupportedNewsSite;
   importMode?: SourceImportMode;
+  importStatus?: 'live' | 'cache';
+  cachedAt?: string;
 };
 
 export type ExtractionOperation = 'summary' | 'entities' | 'relations';

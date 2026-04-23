@@ -1,7 +1,9 @@
 import type { KnowledgeExtractionProvider } from './provider.js';
-import { normalizeExtractionResult } from './normalizer.js';
+import { normalizeEntities, normalizeExtractionResult, normalizeRelations } from './normalizer.js';
 import type {
+  EntityExtractionResult,
   ExtractionOperation,
+  ExtractionRelation,
   ExtractionRequest,
   ExtractionResult
 } from './types.js';
@@ -11,6 +13,11 @@ type RealKnowledgeExtractionProviderOptions = {
   model: string;
   apiKey?: string;
   fetchImplementation?: typeof fetch;
+};
+
+type StructuredAnalysisResult = {
+  entities?: EntityExtractionResult['entities'];
+  relations?: ExtractionRelation[];
 };
 
 const normalizeBaseUrl = (baseUrl: string): string => {
@@ -33,11 +40,16 @@ const buildOperationInstruction = (operation: ExtractionOperation): string => {
   return '请输出 JSON：{"kind":"relations","relations":[{"source":"...","relation":"...","target":"..."}]}。关系最多 3 条；若文本信息弱，也请优先返回 1-3 条弱关系（如 日期、状态、描述、提到），不要返回空数组。';
 };
 
+const buildStructuredAnalysisInstruction = () =>
+  '请输出 JSON：{"entities":[{"name":"...","type":"organization|person|topic"}],"relations":[{"source":"...","relation":"...","target":"..."}]}。' +
+  'source 和 target 必须引用 entities 中出现的名称。entities 最多 4 个，relations 最多 3 条；若文本信息弱，也请返回有限 topic 与弱关系，不要返回空对象。';
+
 export class RealKnowledgeExtractionProvider implements KnowledgeExtractionProvider {
   private readonly baseUrl: string;
   private readonly model: string;
   private readonly apiKey?: string;
   private readonly fetchImplementation: typeof fetch;
+  private readonly structuredAnalysisCache = new Map<string, Promise<StructuredAnalysisResult>>();
 
   constructor(options: RealKnowledgeExtractionProviderOptions) {
     this.baseUrl = normalizeBaseUrl(options.baseUrl);
@@ -46,7 +58,7 @@ export class RealKnowledgeExtractionProvider implements KnowledgeExtractionProvi
     this.fetchImplementation = options.fetchImplementation ?? fetch;
   }
 
-  async extract(operation: ExtractionOperation, request: ExtractionRequest): Promise<ExtractionResult> {
+  private async requestJsonResult<T>(instruction: string, request: ExtractionRequest, operation?: ExtractionOperation): Promise<T> {
     const response = await this.fetchImplementation(`${this.baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
@@ -62,12 +74,12 @@ export class RealKnowledgeExtractionProvider implements KnowledgeExtractionProvi
         messages: [
           {
             role: 'system',
-            content: `你是知识抽取引擎。${buildOperationInstruction(operation)}`
+            content: `你是知识抽取引擎。${instruction}`
           },
           {
             role: 'user',
             content: JSON.stringify({
-              operation,
+              ...(operation ? { operation } : {}),
               sourceType: request.sourceType,
               title: request.title,
               text: request.text
@@ -101,15 +113,60 @@ export class RealKnowledgeExtractionProvider implements KnowledgeExtractionProvi
       throw new Error('Real knowledge extraction provider returned an empty response.');
     }
 
-    let parsedResult: ExtractionResult;
-
     try {
-      parsedResult = JSON.parse(content) as ExtractionResult;
+      return JSON.parse(content) as T;
     } catch (error) {
       throw new Error('Real knowledge extraction provider returned invalid JSON content.', {
         cause: error
       });
     }
+  }
+
+  private async getStructuredAnalysis(request: ExtractionRequest): Promise<StructuredAnalysisResult> {
+    const cacheKey = JSON.stringify({
+      sourceType: request.sourceType,
+      title: request.title ?? '',
+      text: request.text
+    });
+    const cached = this.structuredAnalysisCache.get(cacheKey);
+
+    if (cached) {
+      return cached;
+    }
+
+    const pending = this.requestJsonResult<StructuredAnalysisResult>(buildStructuredAnalysisInstruction(), request).catch(
+      (error) => {
+        this.structuredAnalysisCache.delete(cacheKey);
+        throw error;
+      }
+    );
+    this.structuredAnalysisCache.set(cacheKey, pending);
+    return pending;
+  }
+
+  async extract(operation: ExtractionOperation, request: ExtractionRequest): Promise<ExtractionResult> {
+    if (operation === 'entities' || operation === 'relations') {
+      const structuredAnalysis = await this.getStructuredAnalysis(request);
+      const normalizedEntities = normalizeEntities(request, structuredAnalysis.entities ?? []);
+
+      if (operation === 'entities') {
+        return {
+          kind: 'entities',
+          entities: normalizedEntities
+        };
+      }
+
+      return {
+        kind: 'relations',
+        relations: normalizeRelations(request, structuredAnalysis.relations ?? [], normalizedEntities)
+      };
+    }
+
+    const parsedResult = await this.requestJsonResult<ExtractionResult>(
+      buildOperationInstruction(operation),
+      request,
+      operation
+    );
 
     return normalizeExtractionResult(operation, request, parsedResult);
   }

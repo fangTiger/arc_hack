@@ -235,13 +235,32 @@ const runMockAgentSession = async (
 };
 
 const runGatewayAgentSession = async (
+  sessionId: string,
   source: ExtractionRequest,
   runtimeEnv: RuntimeEnv,
   receiptWriter: ReceiptWriter | undefined,
-  createBuyer: ((config: GatewayBuyerConfig) => GatewayBuyer) | undefined
+  createBuyer: ((config: GatewayBuyerConfig) => GatewayBuyer) | undefined,
+  onProgress: AgentGraphRunOptions['onProgress']
 ): Promise<AgentGraphRunArtifacts> => {
   const buyerConfig = requireGatewayBuyerEnv(runtimeEnv);
   const buyer = (createBuyer ?? createGatewayBuyer)(buyerConfig);
+  const startedSteps = new Set<ExtractionOperation>();
+
+  const ensureStepStarted = async (step: ExtractionOperation) => {
+    if (startedSteps.has(step)) {
+      return;
+    }
+
+    startedSteps.add(step);
+    await emitProgress(onProgress, {
+      type: 'step-started',
+      step,
+      at: new Date().toISOString(),
+      sessionId
+    });
+  };
+
+  await ensureStepStarted('summary');
   const payments = (await buyer.payBatch(buildGatewayRequests(source))).payments;
   const runs: AgentSessionRun[] = [];
   let summary = '';
@@ -249,6 +268,8 @@ const runGatewayAgentSession = async (
   let relations: ExtractionRelation[] = [];
 
   for (const payment of payments) {
+    await ensureStepStarted(payment.operation);
+
     const result = normalizeResult(payment.operation, payment.result);
     const payloadHash = hashPayload(result);
     let receiptTxHash: `0x${string}` | undefined;
@@ -276,15 +297,30 @@ const runGatewayAgentSession = async (
 
     if (payment.operation === 'summary') {
       summary = (result as SummaryExtractionResult).summary;
-      continue;
-    }
-
-    if (payment.operation === 'entities') {
+    } else if (payment.operation === 'entities') {
       entities = (result as EntityExtractionResult).entities;
-      continue;
+    } else {
+      relations = (result as RelationExtractionResult).relations;
     }
 
-    relations = (result as RelationExtractionResult).relations;
+    await emitProgress(onProgress, {
+      type: 'step-completed',
+      step: payment.operation,
+      at: new Date().toISOString(),
+      sessionId,
+      run: runs[runs.length - 1]!,
+      snapshot: {
+        ...(summary ? { summary } : {}),
+        ...(entities.length > 0 ? { entities } : {}),
+        ...(relations.length > 0 ? { relations } : {})
+      }
+    });
+
+    const nextOperation = OPERATIONS[OPERATIONS.indexOf(payment.operation) + 1];
+
+    if (nextOperation) {
+      await ensureStepStarted(nextOperation);
+    }
   }
 
   return {
@@ -302,7 +338,14 @@ export const runAgentGraphSession = async (options: AgentGraphRunOptions): Promi
   const store = new FileAgentGraphStore(options.artifactRootDirectory);
   const runArtifacts =
     runtimeEnv.paymentMode === 'gateway'
-      ? await runGatewayAgentSession(source, runtimeEnv, options.receiptWriter, options.createBuyer)
+      ? await runGatewayAgentSession(
+          sessionId,
+          source,
+          runtimeEnv,
+          options.receiptWriter,
+          options.createBuyer,
+          options.onProgress
+        )
       : await runMockAgentSession(
           sessionId,
           source,

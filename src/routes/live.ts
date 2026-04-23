@@ -10,7 +10,30 @@ import {
   type ImportedArticle,
   type SupportedNewsSite
 } from '../domain/news-import/index.js';
+import {
+  buildJudgments,
+  createLiveWorkbenchViewModel,
+  extractSentences,
+  formatImportModeLabel,
+  formatImportStatusLabel,
+  getDisplayHeadline,
+  getDisplaySource,
+  getEntities,
+  getGraphPresentationMode,
+  getRelations,
+  getSourceMetadata,
+  getStepStatus,
+  getSummary,
+  getTotalPrice,
+  inferEventType,
+  inferImportance
+} from './live-workbench.js';
 import { getArcExplorerBaseUrl } from '../support/arc-explorer.js';
+import {
+  collectRuntimeSensitiveValues,
+  extractSafeErrorMessage,
+  sanitizeSensitiveValue
+} from '../support/sensitive.js';
 
 type NewsImporter = {
   import: (articleUrl: string) => Promise<ImportedArticle>;
@@ -51,6 +74,7 @@ type ParsedCreateSessionBody =
 
 const SUPPORTED_SOURCE_SITE_VALUES = new Set<SupportedNewsSite>(['wublock123', 'panews', 'chaincatcher']);
 const SUPPORTED_IMPORT_MODES = new Set<SourceImportMode>(['manual', 'link', 'preset']);
+const SUPPORTED_IMPORT_STATUSES = new Set<SourceMetadata['importStatus']>(['live', 'cache']);
 
 const escapeHtml = (value: string): string => {
   return value
@@ -135,10 +159,19 @@ const normalizeMetadata = (
     };
   }
 
+  if (metadata.importStatus !== undefined && !SUPPORTED_IMPORT_STATUSES.has(metadata.importStatus as SourceMetadata['importStatus'])) {
+    return {
+      ok: false,
+      message: 'metadata.importStatus 仅支持 live、cache。'
+    };
+  }
+
   const normalizedMetadata: SourceMetadata = {
     ...(articleUrl ? { articleUrl } : {}),
     ...(sourceSite ? { sourceSite: sourceSite as SupportedNewsSite } : {}),
-    ...(importMode ? { importMode: importMode as SourceImportMode } : {})
+    ...(importMode ? { importMode: importMode as SourceImportMode } : {}),
+    ...(trimToUndefined(metadata.importStatus) ? { importStatus: metadata.importStatus as 'live' | 'cache' } : {}),
+    ...(trimToUndefined(metadata.cachedAt) ? { cachedAt: trimToUndefined(metadata.cachedAt) } : {})
   };
 
   return {
@@ -206,12 +239,29 @@ const parseCreateSessionBody = (body: CreateSessionBody): ParsedCreateSessionBod
   };
 };
 
-const extractErrorMessage = (error: unknown): string => {
-  if (error instanceof Error) {
-    return error.message;
+const extractErrorMessage = (runtimeEnv: RuntimeEnv, error: unknown): string => {
+  return extractSafeErrorMessage(error, '新闻导入失败。', {
+    sensitiveValues: collectRuntimeSensitiveValues(runtimeEnv)
+  });
+};
+
+const isAntiBotImportError = (error: unknown): boolean =>
+  error instanceof Error && error.message.includes('反爬挑战页');
+
+const logLiveRoute = (
+  runtimeEnv: RuntimeEnv,
+  message: string,
+  details: Record<string, unknown>
+): void => {
+  if (runtimeEnv.nodeEnv === 'test') {
+    return;
   }
 
-  return '新闻导入失败。';
+  const safeDetails = sanitizeSensitiveValue(details, {
+    sensitiveValues: collectRuntimeSensitiveValues(runtimeEnv)
+  });
+
+  console.log(`[live-route] ${message} ${JSON.stringify(safeDetails, null, 0)}`);
 };
 
 const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
@@ -238,7 +288,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
     <head>
       <meta charset="utf-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1" />
-      <title>Live Agent Console</title>
+      <title>可信投研工作台 | Live Agent Console</title>
       <style>
         :root {
           color-scheme: light;
@@ -275,11 +325,29 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           border: 1px solid var(--line);
           border-radius: 28px;
           box-shadow: 0 22px 48px rgba(31, 41, 55, 0.08);
+          backdrop-filter: blur(18px);
+          position: relative;
+          overflow: hidden;
         }
 
         .hero {
           padding: 26px;
           margin-bottom: 18px;
+        }
+
+        .hero::before,
+        .panel::before {
+          content: "";
+          position: absolute;
+          inset: 0;
+          background: linear-gradient(135deg, rgba(255, 255, 255, 0.42), transparent 34%, rgba(15, 118, 110, 0.03));
+          pointer-events: none;
+        }
+
+        .hero > *,
+        .panel > * {
+          position: relative;
+          z-index: 1;
         }
 
         .eyebrow {
@@ -403,6 +471,13 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           padding: 16px;
           display: grid;
           gap: 10px;
+          transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+        }
+
+        .preset-card:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 18px 28px rgba(31, 41, 55, 0.08);
+          border-color: rgba(15, 118, 110, 0.24);
         }
 
         .preset-card h3 {
@@ -503,7 +578,9 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           margin-top: 18px;
           border-radius: 22px;
           border: 1px solid rgba(148, 163, 184, 0.22);
-          background: rgba(255, 255, 255, 0.82);
+          background:
+            radial-gradient(circle at top left, rgba(15, 118, 110, 0.08), transparent 10rem),
+            rgba(255, 255, 255, 0.82);
           min-height: 260px;
           padding: 18px;
         }
@@ -512,6 +589,22 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           width: 100%;
           height: auto;
           display: block;
+        }
+
+        .graph-canvas {
+          width: 100%;
+          min-height: 340px;
+        }
+
+        .graph-list {
+          display: grid;
+          gap: 12px;
+        }
+
+        .graph-list ul {
+          margin: 0;
+          padding-left: 18px;
+          color: var(--muted);
         }
 
         .muted {
@@ -594,8 +687,241 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           cursor: default;
         }
 
+        .workbench-top {
+          display: flex;
+          justify-content: space-between;
+          gap: 14px;
+          align-items: flex-start;
+          flex-wrap: wrap;
+          margin-bottom: 18px;
+        }
+
+        .workbench-top h2 {
+          margin: 0 0 6px;
+          font-size: clamp(1.4rem, 3vw, 2.1rem);
+        }
+
+        .workbench-top p {
+          margin: 0;
+          color: var(--muted);
+          line-height: 1.6;
+        }
+
+        .workbench-grid {
+          display: grid;
+          grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.8fr);
+          gap: 16px;
+        }
+
+        .workbench-main,
+        .workbench-sidebar {
+          display: grid;
+          gap: 16px;
+        }
+
+        .workbench-sidebar {
+          align-content: start;
+        }
+
+        .overview-card,
+        .sidebar-card,
+        .judgment-card,
+        .evidence-card {
+          border-radius: 24px;
+          border: 1px solid rgba(148, 163, 184, 0.22);
+          background: rgba(255, 255, 255, 0.82);
+          padding: 18px;
+          position: relative;
+          overflow: hidden;
+          box-shadow: 0 14px 28px rgba(31, 41, 55, 0.05);
+        }
+
+        .overview-card {
+          background:
+            radial-gradient(circle at top right, rgba(15, 118, 110, 0.12), transparent 14rem),
+            linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(248, 250, 252, 0.9));
+        }
+
+        .overview-card::before,
+        .sidebar-card::before,
+        .judgment-card::before,
+        .evidence-card::before {
+          content: "";
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          height: 1px;
+          background: linear-gradient(90deg, rgba(180, 83, 9, 0.66), rgba(15, 118, 110, 0.66), transparent);
+        }
+
+        .section-kicker {
+          font-size: 12px;
+          letter-spacing: 0.14em;
+          text-transform: uppercase;
+          color: var(--gold);
+          margin-bottom: 10px;
+        }
+
+        .overview-card h3 {
+          margin: 0 0 10px;
+          font-size: clamp(1.4rem, 2.8vw, 2.3rem);
+          line-height: 1.05;
+        }
+
+        .overview-card p {
+          margin: 0;
+          color: var(--muted);
+          line-height: 1.7;
+        }
+
+        .metric-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+          gap: 10px;
+          margin-top: 16px;
+        }
+
+        .metric-tile {
+          border-radius: 18px;
+          padding: 14px;
+          border: 1px solid rgba(148, 163, 184, 0.18);
+          background: rgba(255, 255, 255, 0.92);
+        }
+
+        .metric-label {
+          font-size: 12px;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          color: var(--gold);
+          margin-bottom: 8px;
+        }
+
+        .metric-value {
+          font-size: 20px;
+          line-height: 1.2;
+        }
+
+        .judgment-grid {
+          display: grid;
+          gap: 12px;
+        }
+
+        .judgment-card h3,
+        .sidebar-card h3,
+        .evidence-card h3 {
+          margin: 0 0 10px;
+          font-size: 18px;
+        }
+
+        .judgment-card {
+          background:
+            radial-gradient(circle at top right, rgba(180, 83, 9, 0.08), transparent 12rem),
+            linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(250, 250, 249, 0.92));
+        }
+
+        .judgment-card p,
+        .sidebar-card p,
+        .evidence-card p {
+          margin: 0;
+          color: var(--muted);
+          line-height: 1.65;
+        }
+
+        .judgment-meta {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+          margin-top: 12px;
+        }
+
+        .meta-pill {
+          display: inline-flex;
+          align-items: center;
+          padding: 6px 10px;
+          border-radius: 999px;
+          background: rgba(15, 118, 110, 0.1);
+          color: var(--accent);
+          font-size: 12px;
+        }
+
+        .evidence-quote {
+          margin-top: 12px;
+          padding: 14px;
+          border-radius: 18px;
+          background: rgba(248, 250, 252, 0.96);
+          border: 1px solid rgba(148, 163, 184, 0.18);
+          color: var(--ink);
+          line-height: 1.7;
+        }
+
+        .sidebar-card .stage-grid {
+          grid-template-columns: 1fr;
+          margin-top: 0;
+        }
+
+        .sidebar-stack,
+        .entity-list,
+        .credential-list,
+        .source-list {
+          display: grid;
+          gap: 10px;
+        }
+
+        .entity-chip {
+          display: inline-flex;
+          align-items: center;
+          padding: 8px 12px;
+          border-radius: 999px;
+          background: rgba(180, 83, 9, 0.1);
+          color: var(--gold);
+          font-size: 13px;
+          margin: 0 8px 8px 0;
+        }
+
+        .source-note {
+          font-size: 13px;
+          color: var(--muted);
+        }
+
+        .credential-list .evidence-item {
+          background: rgba(248, 250, 252, 0.92);
+        }
+
+        .hero,
+        .overview-card,
+        .judgment-card,
+        .sidebar-card,
+        .evidence-card,
+        .preset-card {
+          animation: rise-in 420ms ease both;
+        }
+
+        .workbench-main > *:nth-child(2) { animation-delay: 60ms; }
+        .workbench-main > *:nth-child(3) { animation-delay: 120ms; }
+        .workbench-sidebar > *:nth-child(2) { animation-delay: 80ms; }
+        .workbench-sidebar > *:nth-child(3) { animation-delay: 120ms; }
+        .workbench-sidebar > *:nth-child(4) { animation-delay: 160ms; }
+        .workbench-sidebar > *:nth-child(5) { animation-delay: 200ms; }
+
+        @keyframes rise-in {
+          from {
+            opacity: 0;
+            transform: translateY(10px);
+          }
+
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
         @media (max-width: 940px) {
           .layout {
+            grid-template-columns: 1fr;
+          }
+
+          .workbench-grid {
             grid-template-columns: 1fr;
           }
 
@@ -609,8 +935,9 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
       <main>
         <section class="hero">
           <div class="eyebrow"><span>Live Agent Console</span><span>Mode ${escapeHtml(runtimeEnv.paymentMode)}</span></div>
-          <h1>知识图谱 Live Console</h1>
-          <p>支持两种输入模式：文章链接 或 手动文本。链接模式会先导入白名单新闻源，预置新闻卡片则直接使用本地缓存结果，不依赖实时抓远端网页。当前服务端模式为 <strong>${escapeHtml(runtimeEnv.paymentMode)}</strong>。</p>
+          <h1>可信投研工作台</h1>
+          <p>把一条资讯转成可判断、可复核、可验证的投研线索。比赛版优先保证分析结果稳定，因此聚焦白名单链接、手动正文和预置样本三种输入方式，先把事件判断、关键结论、证据摘录与分析凭证讲清楚。</p>
+          <p class="mode-note">导入状态：实时抓取 / 导入状态：缓存回退。辅助关系图中的 derived 仅用于展示连通性，不代表真实抽取关系；可信不代表机器永远正确，而是判断有出处、调用可回看。</p>
         </section>
 
         <section class="layout">
@@ -655,7 +982,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
                 <button id="start-button" class="primary" type="button">开始演示</button>
                 <button id="fill-sample-button" class="secondary" type="button">填充示例</button>
               </div>
-              <p id="form-message" class="muted">页面加载后会尝试恢复最近一次 live session。</p>
+              <p id="form-message" class="muted">页面只会自动恢复仍在运行中的 live session，完成或失败结果不会默认回显。</p>
 
               <section class="section-heading">
                 <h3>预置新闻卡片</h3>
@@ -666,53 +993,134 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           </article>
 
           <article class="panel">
-            <div style="display:flex; justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
+            <div class="workbench-top">
               <div>
-                <h2 style="margin-bottom:6px;">运行状态</h2>
-                <p class="muted" style="margin-top:0;">固定展示 create → summary → entities → relations → graph。</p>
+                <h2>可信投研工作台</h2>
+                <p>主区优先展示事件总览、关键判断和证据摘录；支付、receipt 与 payload 证据统一收纳到分析凭证区域，辅助关系图保留在次级信息层。</p>
               </div>
               <div id="overall-status" class="status-chip">waiting</div>
             </div>
 
-            <section id="stage-grid" class="stage-grid" aria-live="polite"></section>
+            <section class="workbench-grid" aria-live="polite">
+              <div class="workbench-main">
+                <article class="overview-card">
+                  <div class="section-kicker">事件总览</div>
+                  <h3 id="event-headline">等待分析开始</h3>
+                  <p id="event-summary">选择一条资讯后，系统会先生成事件判断，再补全主体、证据和分析凭证。</p>
+                  <div id="event-metrics" class="metric-grid">
+                    <article class="metric-tile">
+                      <div class="metric-label">事件类型</div>
+                      <div class="metric-value">待识别</div>
+                    </article>
+                    <article class="metric-tile">
+                      <div class="metric-label">重要性</div>
+                      <div class="metric-value">待判断</div>
+                    </article>
+                    <article class="metric-tile">
+                      <div class="metric-label">来源方式</div>
+                      <div class="metric-value">待输入</div>
+                    </article>
+                    <article class="metric-tile">
+                      <div class="metric-label">总成本</div>
+                      <div class="metric-value">n/a</div>
+                    </article>
+                  </div>
+                </article>
 
-            <section class="evidence-grid" aria-live="polite">
-              <article class="evidence-card">
-                <div class="stage-label">Summary</div>
-                <p id="summary-preview" class="muted">尚未生成</p>
-              </article>
-              <article class="evidence-card">
-                <div class="stage-label">Evidence</div>
-                <div id="evidence-preview" class="evidence-list muted">尚无支付证据</div>
-              </article>
-            </section>
+                <section>
+                  <div class="section-heading">
+                    <h3>关键判断</h3>
+                    <p class="muted">每条判断都应回答“为什么重要”，而不是只复述原文。</p>
+                  </div>
+                  <div id="judgment-list" class="judgment-grid">
+                    <article class="judgment-card">
+                      <div class="section-kicker">关键判断</div>
+                      <h3>等待事件判断生成</h3>
+                      <p>summary 完成后，这里会优先出现 2-3 条可继续跟进的结论。</p>
+                    </article>
+                  </div>
+                </section>
 
-            <section id="graph-preview" class="graph-preview" aria-live="polite">
-              <p class="muted">最终图谱会显示在这里。</p>
+                <section>
+                  <div class="section-heading">
+                    <h3>证据摘录</h3>
+                    <p class="muted">当前展示相关原文片段，帮助人工复核判断；暂不宣称已完成逐句证据对齐。</p>
+                  </div>
+                  <div id="evidence-preview" class="evidence-list muted">尚无可回看的原文证据。</div>
+                </section>
+              </div>
+
+              <aside class="workbench-sidebar">
+                <article class="sidebar-card">
+                  <div class="section-kicker">分析凭证</div>
+                  <div id="credential-preview" class="credential-list muted">payment、receipt 与 payloadHash 会在这里统一展示。</div>
+                </article>
+
+                <article class="sidebar-card">
+                  <div class="section-kicker">分析流程</div>
+                  <div id="stage-grid" class="stage-grid"></div>
+                </article>
+
+                <article class="sidebar-card">
+                  <div class="section-kicker">导入来源</div>
+                  <div id="source-preview" class="source-list">
+                    <p class="source-note">支持白名单链接、手动文本与预置样本。导入边界会在这里明确展示。</p>
+                  </div>
+                </article>
+
+                <article class="sidebar-card">
+                  <div class="section-kicker">核心主体</div>
+                  <div id="entity-preview" class="entity-list muted">摘要与实体抽取完成后，这里会显示本次最值得关注的主体。</div>
+                </article>
+
+                <article class="sidebar-card">
+                  <div class="section-kicker">辅助关系图</div>
+                  <section id="graph-preview" class="graph-preview" aria-live="polite">
+                    <p class="muted">辅助关系图会在这里显示，用于快速扫清主体之间的连接，不承担主结论职责。</p>
+                  </section>
+                </article>
+              </aside>
             </section>
           </article>
         </section>
       </main>
 
+      <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
       <script>
         const sample = ${JSON.stringify(sample)};
         const presets = ${JSON.stringify(liveNewsPresets)};
+        const supportedSourceLabels = ${JSON.stringify(SUPPORTED_NEWS_SOURCE_LABELS)};
         const state = {
           pollingTimer: null,
-          sessionId: null
+          sessionId: null,
+          graphChart: null
         };
         const stageOrder = ['create', 'summary', 'entities', 'relations', 'graph'];
         const stageLabels = {
-          create: 'Create',
-          summary: 'Summary',
-          entities: 'Entities',
-          relations: 'Relations',
-          graph: 'Graph'
+          create: '创建会话',
+          summary: '事件判断',
+          entities: '主体抽取',
+          relations: '关系整理',
+          graph: '结果归档'
+        };
+        const liveStatusLabels = {
+          waiting: '等待中',
+          queued: '已排队',
+          running: '分析中',
+          completed: '已完成',
+          failed: '分析失败',
+          pending: '待执行'
         };
         const stageGrid = document.getElementById('stage-grid');
         const overallStatus = document.getElementById('overall-status');
-        const summaryPreview = document.getElementById('summary-preview');
+        const eventHeadline = document.getElementById('event-headline');
+        const eventSummary = document.getElementById('event-summary');
+        const eventMetrics = document.getElementById('event-metrics');
+        const judgmentList = document.getElementById('judgment-list');
         const evidencePreview = document.getElementById('evidence-preview');
+        const sourcePreview = document.getElementById('source-preview');
+        const entityPreview = document.getElementById('entity-preview');
+        const credentialPreview = document.getElementById('credential-preview');
         const graphPreview = document.getElementById('graph-preview');
         const explorerBaseUrl = ${JSON.stringify(getArcExplorerBaseUrl(runtimeEnv))};
         const formMessage = document.getElementById('form-message');
@@ -727,10 +1135,32 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
         const fillSampleButton = document.getElementById('fill-sample-button');
         const presetButtons = document.querySelectorAll('.preset-launch-button');
 
+        window.addEventListener('resize', () => {
+          if (state.graphChart) {
+            state.graphChart.resize();
+          }
+        });
+
         const statusText = (status) => {
-          if (!status) return 'pending';
-          return status;
+          if (!status) return liveStatusLabels.pending;
+          return liveStatusLabels[status] ?? status;
         };
+        ${formatImportStatusLabel.toString()}
+        ${formatImportModeLabel.toString()}
+        ${getStepStatus.toString()}
+        ${extractSentences.toString()}
+        ${getSummary.toString()}
+        ${getEntities.toString()}
+        ${getRelations.toString()}
+        ${getSourceMetadata.toString()}
+        ${getDisplayHeadline.toString()}
+        ${inferEventType.toString()}
+        ${inferImportance.toString()}
+        ${getDisplaySource.toString()}
+        ${getTotalPrice.toString()}
+        ${getGraphPresentationMode.toString()}
+        ${buildJudgments.toString()}
+        ${createLiveWorkbenchViewModel.toString()}
 
         const escapeText = (value) => String(value ?? '')
           .replaceAll('&', '&amp;')
@@ -816,7 +1246,12 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           \`;
         };
 
-        const getStep = (session, key) => session?.steps?.find((step) => step.key === key);
+        const createMetricTile = (label, value) => \`
+          <article class="metric-tile">
+            <div class="metric-label">\${escapeText(label)}</div>
+            <div class="metric-value">\${escapeText(value)}</div>
+          </article>
+        \`;
 
         const buildDerivedStages = (session) => {
           const createStatus = session ? 'completed' : 'pending';
@@ -830,98 +1265,303 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
 
           return {
             create: createStatus,
-            summary: getStep(session, 'summary')?.status ?? 'pending',
-            entities: getStep(session, 'entities')?.status ?? 'pending',
-            relations: getStep(session, 'relations')?.status ?? 'pending',
+            summary: getStepStatus(session, 'summary'),
+            entities: getStepStatus(session, 'entities'),
+            relations: getStepStatus(session, 'relations'),
             graph: graphStatus
           };
         };
 
-        const renderGraph = (session) => {
-          if (!session?.agentSession?.graph) {
-            graphPreview.innerHTML = '<p class="muted">最终图谱会显示在这里。</p>';
+        const renderEventOverview = (_session, workbenchModel) => {
+          eventHeadline.textContent = workbenchModel.headline;
+          eventSummary.textContent = workbenchModel.summary;
+          eventMetrics.innerHTML = [
+            createMetricTile(
+              workbenchModel.eventTypeValue === '待识别' ? '事件类型' : '事件类型（初步归类）',
+              workbenchModel.eventTypeValue
+            ),
+            createMetricTile('重要性', workbenchModel.importanceValue),
+            createMetricTile('来源方式', workbenchModel.sourceModeValue),
+            createMetricTile('总成本', workbenchModel.totalPriceValue)
+          ].join('');
+        };
+
+        const renderJudgments = (workbenchModel) => {
+          const judgments = workbenchModel.judgments;
+
+          if (judgments.length === 0) {
+            judgmentList.innerHTML = \`
+              <article class="judgment-card">
+                <div class="section-kicker">事件判断</div>
+                <h3>等待事件判断生成</h3>
+                <p>只有在对应步骤完成后，页面才会显示初步判断，避免把原始文本误包装成已完成分析。</p>
+              </article>
+            \`;
             return;
           }
 
-          const nodes = session.agentSession.graph.nodes;
-          const edges = session.agentSession.graph.edges
-            .map((edge) => {
-              const source = nodes.find((node) => node.id === edge.source);
-              const target = nodes.find((node) => node.id === edge.target);
-
-              if (!source || !target) {
-                return '';
-              }
-
-              const labelX = Math.round((source.x + target.x) / 2);
-              const labelY = Math.round((source.y + target.y) / 2);
-
-              return \`
-                <line x1="\${source.x}" y1="\${source.y}" x2="\${target.x}" y2="\${target.y}" stroke="#94a3b8" stroke-width="2" />
-                <text x="\${labelX}" y="\${labelY - 8}" text-anchor="middle" fill="#334155" font-size="12">\${escapeText(edge.label)}</text>
-              \`;
-            })
-            .join('');
-          const circles = nodes
-            .map((node) => \`
-              <g>
-                <circle cx="\${node.x}" cy="\${node.y}" r="26" fill="\${escapeText(node.color)}" opacity="0.92"></circle>
-                <text x="\${node.x}" y="\${node.y + 42}" text-anchor="middle" fill="#0f172a" font-size="13">\${escapeText(node.label)}</text>
-              </g>
+          judgmentList.innerHTML = judgments
+            .map((judgment) => \`
+              <article class="judgment-card">
+                <div class="section-kicker">\${escapeText(judgment.kicker)}</div>
+                <h3>\${escapeText(judgment.title)}</h3>
+                <p>\${escapeText(judgment.body)}</p>
+                <div class="evidence-quote">\${escapeText(judgment.evidenceQuote)}</div>
+                <div class="judgment-meta">
+                  \${judgment.meta.map((entry) => \`<span class="meta-pill">\${escapeText(entry)}</span>\`).join('')}
+                </div>
+              </article>
             \`)
             .join('');
+        };
 
-          graphPreview.innerHTML = \`
-            <div class="stage-label">graph-preview</div>
-            <svg viewBox="0 0 480 440" role="img" aria-label="Knowledge graph">
-              <rect x="0" y="0" width="480" height="440" rx="24" fill="#f8fafc"></rect>
-              \${edges}
-              \${circles}
-            </svg>
-            <p class="muted">graphUrl: \${escapeText(session.graphUrl ?? 'n/a')}</p>
+        const renderEvidenceDeck = (workbenchModel) => {
+          const judgments = workbenchModel.judgments;
+
+          if (judgments.length === 0) {
+            evidencePreview.innerHTML = '<p class="muted">相关原文片段会在事件判断完成后出现，用于人工复核。</p>';
+            return;
+          }
+
+          evidencePreview.innerHTML = \`
+            <p class="source-note">\${escapeText(workbenchModel.evidenceSectionNote)}</p>
+            \${judgments
+            .map((judgment, index) => \`
+              <article class="evidence-card">
+                <div class="section-kicker">摘录 \${index + 1}</div>
+                <h3>\${escapeText(judgment.evidenceTitle)}</h3>
+                <p>\${escapeText(judgment.body)}</p>
+                <div class="evidence-quote">\${escapeText(judgment.evidenceQuote)}</div>
+                <p class="source-note">
+                  \${escapeText(judgment.evidenceRoleLine)}
+                  · 来源：\${escapeText(workbenchModel.sourceLabel)}
+                  \${workbenchModel.importStatusLabel !== '未标记导入状态' ? ' · ' + escapeText(workbenchModel.importStatusLabel) : ''}
+                </p>
+              </article>
+            \`)
+            .join('')}
           \`;
         };
 
-        const renderEvidence = (session) => {
+        const renderSource = (session, workbenchModel) => {
           if (!session) {
-            summaryPreview.textContent = '尚未生成';
-            evidencePreview.textContent = '尚无支付证据';
-            renderGraph(null);
+            sourcePreview.innerHTML = '<p class="source-note">支持白名单链接、手动文本与预置样本。导入边界会在这里明确展示。</p>';
             return;
           }
 
-          summaryPreview.textContent = session.preview?.summary ?? '摘要生成中';
-          const runs = session.agentSession?.runs ?? [];
-          evidencePreview.innerHTML = runs.length > 0
-            ? runs.map((run) => \`
-                <article class="evidence-item">
-                  <h3>\${escapeText(run.operation)}</h3>
-                  \${renderCopyableField('requestId', run.requestId)}
-                  \${renderCopyableField('paymentTransaction', run.paymentTransaction)}
-                  \${renderCopyableField(
-                    'paymentPayer',
-                    run.paymentPayer,
-                    isHexAddress(run.paymentPayer)
-                      ? {
-                          explorerUrl: explorerBaseUrl + '/address/' + run.paymentPayer,
-                          explorerLabel: '地址'
-                        }
-                      : {}
-                  )}
-                  \${renderCopyableField(
-                    'receiptTxHash',
-                    run.receiptTxHash ?? 'n/a',
-                    isHexTransactionHash(run.receiptTxHash)
-                      ? {
-                          explorerUrl: explorerBaseUrl + '/tx/' + run.receiptTxHash,
-                          explorerLabel: '链上交易'
-                        }
-                      : {}
-                  )}
-                </article>
-              \`).join('')
-            : '尚无支付证据';
-          renderGraph(session);
+          sourcePreview.innerHTML = \`
+            <article class="evidence-item">
+              <h3>\${escapeText(workbenchModel.sourceLabel)}</h3>
+              <p class="source-note">\${escapeText(workbenchModel.sourceTypeLabel)} · \${escapeText(workbenchModel.importModeLabel)} · \${escapeText(workbenchModel.importStatusLabel)}</p>
+              \${session.source?.title ? renderCopyableField('title', session.source.title) : ''}
+              \${workbenchModel.articleUrl ? renderCopyableField('articleUrl', workbenchModel.articleUrl, { explorerUrl: workbenchModel.articleUrl, explorerLabel: '原文' }) : ''}
+              \${workbenchModel.cachedAt ? renderCopyableField('cachedAt', workbenchModel.cachedAt) : ''}
+            </article>
+          \`;
+        };
+
+        const renderEntities = (workbenchModel) => {
+          const entities = workbenchModel.entities;
+
+          if (entities.length === 0) {
+            if (workbenchModel.entityStepStatus === 'completed') {
+              entityPreview.innerHTML = '<p class="muted">实体步骤已完成，但当前没有返回稳定主体，建议结合原文继续人工复核。</p>';
+              return;
+            }
+
+            if (workbenchModel.entityStepStatus === 'running') {
+              entityPreview.innerHTML = '<p class="muted">实体步骤进行中，核心主体会在返回后出现在这里。</p>';
+              return;
+            }
+
+            if (workbenchModel.entityStepStatus === 'failed') {
+              entityPreview.innerHTML = '<p class="muted">实体步骤未完成，建议先查看分析凭证与错误信息。</p>';
+              return;
+            }
+
+            entityPreview.innerHTML = '<p class="muted">核心主体会在实体步骤开始返回后逐步出现。</p>';
+            return;
+          }
+
+          entityPreview.innerHTML = \`
+            <div>
+              \${entities
+                .slice(0, 8)
+                .map((entity) => \`<span class="entity-chip">\${escapeText(entity.name)}\${entity.type ? ' · ' + escapeText(entity.type) : ''}</span>\`)
+                .join('')}
+            </div>
+            <p class="source-note">已识别 \${escapeText(String(entities.length))} 个主体，可结合辅助关系图继续扫清连接。</p>
+          \`;
+        };
+
+        const renderCredentials = (session) => {
+          if (!session) {
+            credentialPreview.innerHTML = 'payment、receipt 与 payloadHash 会在这里统一展示。';
+            return;
+          }
+
+          const visibleSteps = (session.steps ?? []).filter((step) => step.status !== 'pending' || step.requestId);
+
+          if (visibleSteps.length === 0) {
+            credentialPreview.innerHTML = '分析链路尚未启动。';
+            return;
+          }
+
+          credentialPreview.innerHTML = visibleSteps
+            .map((step) => \`
+              <article class="evidence-item">
+                <h3>\${escapeText(stageLabels[step.key] ?? step.key)}</h3>
+                <p class="source-note">状态：\${escapeText(statusText(step.status))}</p>
+                \${renderCopyableField('requestId', step.requestId ?? 'n/a')}
+                \${renderCopyableField('price', step.price ?? 'n/a')}
+                \${renderCopyableField('paymentTransaction', step.paymentTransaction ?? 'n/a')}
+                \${renderCopyableField(
+                  'paymentPayer',
+                  step.paymentPayer ?? 'n/a',
+                  isHexAddress(step.paymentPayer)
+                    ? {
+                        explorerUrl: explorerBaseUrl + '/address/' + step.paymentPayer,
+                        explorerLabel: '地址'
+                      }
+                    : {}
+                )}
+                \${renderCopyableField('payloadHash', step.payloadHash ?? 'n/a')}
+                \${renderCopyableField(
+                  'receiptTxHash',
+                  step.receiptTxHash ?? 'n/a',
+                  isHexTransactionHash(step.receiptTxHash)
+                    ? {
+                        explorerUrl: explorerBaseUrl + '/tx/' + step.receiptTxHash,
+                        explorerLabel: '链上交易'
+                      }
+                    : {}
+                )}
+              </article>
+            \`)
+            .join('');
+        };
+
+        const disposeGraphChart = () => {
+          if (state.graphChart) {
+            state.graphChart.dispose();
+            state.graphChart = null;
+          }
+        };
+
+        const renderGraphList = (nodes, edges) => {
+          disposeGraphChart();
+          graphPreview.innerHTML = \`
+            <div class="stage-label">辅助关系图</div>
+            <div class="graph-list">
+              <div>
+                \${nodes
+                  .slice(0, 6)
+                  .map((node) => \`<span class="entity-chip">\${escapeText(node.label)}\${node.type ? ' · ' + escapeText(node.type) : ''}</span>\`)
+                  .join('')}
+              </div>
+              <ul>
+                \${(edges.length > 0
+                  ? edges
+                  : [{ source: '工作台', label: '提示', target: '主体或关系不足，已降级为清单视图', provenance: 'derived' }])
+                  .slice(0, 4)
+                  .map((edge) => \`<li>\${escapeText(edge.source)} \${escapeText(edge.label)} \${escapeText(edge.target)}\${edge.provenance === 'derived' ? '（derived）' : ''}</li>\`)
+                  .join('')}
+              </ul>
+            </div>
+            <p class="muted">当前主体或关系不足以稳定成图，已自动降级为清单视图；最终判断仍以证据区为准。</p>
+          \`;
+        };
+
+        const renderGraph = (session) => {
+          if (!session?.agentSession?.graph) {
+            disposeGraphChart();
+            graphPreview.innerHTML = '<p class="muted">辅助关系图会在摘要、主体和关系补齐后出现，弱数据场景会自动降级为清单视图。</p>';
+            return;
+          }
+
+          const nodes = session.agentSession.graph.nodes ?? [];
+          const edges = session.agentSession.graph.edges ?? [];
+          const graphMode = getGraphPresentationMode(session);
+
+          if (graphMode === 'list') {
+            renderGraphList(nodes, edges);
+            return;
+          }
+
+          if (graphMode === 'empty') {
+            disposeGraphChart();
+            graphPreview.innerHTML = '<p class="muted">辅助关系图会在摘要、主体和关系补齐后出现，弱数据场景会自动降级为清单视图。</p>';
+            return;
+          }
+
+          graphPreview.innerHTML = \`
+            <div class="stage-label">辅助关系图</div>
+            <div id="graph-canvas" class="graph-canvas" role="img" aria-label="Auxiliary relationship graph"></div>
+            <p class="muted">graphUrl: \${escapeText(session.graphUrl ?? 'n/a')} · derived 边仅用于展示连通性，最终判断以证据区为准。</p>
+          \`;
+
+          const graphCanvas = document.getElementById('graph-canvas');
+
+          if (!graphCanvas || !window.echarts) {
+            renderGraphList(nodes, edges);
+            return;
+          }
+
+          disposeGraphChart();
+          state.graphChart = window.echarts.init(graphCanvas, null, { renderer: 'svg' });
+          state.graphChart.setOption({
+            animationDuration: 420,
+            tooltip: {
+              trigger: 'item'
+            },
+            series: [
+              {
+                type: 'graph',
+                layout: 'none',
+                roam: true,
+                label: {
+                  show: true,
+                  position: 'bottom',
+                  color: '#0f172a',
+                  fontSize: 12
+                },
+                edgeLabel: {
+                  show: true,
+                  formatter: ({ data }) => data.value,
+                  color: '#334155',
+                  fontSize: 11
+                },
+                lineStyle: {
+                  color: '#94a3b8',
+                  width: 2,
+                  curveness: 0.08
+                },
+                emphasis: {
+                  focus: 'adjacency'
+                },
+                data: nodes.map((node) => ({
+                  id: node.id,
+                  name: node.label,
+                  value: node.type,
+                  x: node.x,
+                  y: node.y,
+                  symbolSize: 52,
+                  itemStyle: {
+                    color: node.color
+                  }
+                })),
+                links: edges.map((edge) => ({
+                  source: edge.source,
+                  target: edge.target,
+                  value: edge.label,
+                  lineStyle: {
+                    type: edge.provenance === 'derived' ? 'dashed' : 'solid',
+                    opacity: edge.provenance === 'derived' ? 0.64 : 0.88
+                  }
+                }))
+              }
+            ]
+          });
         };
 
         const renderStages = (session) => {
@@ -936,7 +1576,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
 
         const setOverallStatus = (session) => {
           const value = session?.status ?? 'waiting';
-          overallStatus.textContent = value;
+          overallStatus.textContent = statusText(value);
           overallStatus.className = value === 'failed' ? 'status-chip failed' : 'status-chip';
         };
 
@@ -951,14 +1591,25 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           if (session?.sessionId) {
             state.sessionId = session.sessionId;
             const importMode = session.source?.metadata?.importMode;
+            const importStatus = session.source?.metadata?.importStatus;
+            const cachedAt = session.source?.metadata?.cachedAt;
+            const statusLabel = importStatus ? ' · 导入状态：' + formatImportStatusLabel(importStatus) : '';
+            const cachedAtLabel = importStatus === 'cache' && cachedAt ? ' · 缓存时间：' + cachedAt : '';
             formMessage.textContent = importMode
-              ? '当前 sessionId: ' + session.sessionId + ' · importMode=' + importMode
-              : '当前 sessionId: ' + session.sessionId;
+              ? '当前 sessionId: ' + session.sessionId + ' · importMode=' + importMode + statusLabel + cachedAtLabel
+              : '当前 sessionId: ' + session.sessionId + statusLabel + cachedAtLabel;
           }
 
+          const workbenchModel = createLiveWorkbenchViewModel(session, supportedSourceLabels);
           setOverallStatus(session);
+          renderCredentials(session);
           renderStages(session);
-          renderEvidence(session);
+          renderEventOverview(session, workbenchModel);
+          renderJudgments(workbenchModel);
+          renderEvidenceDeck(workbenchModel);
+          renderSource(session, workbenchModel);
+          renderEntities(workbenchModel);
+          renderGraph(session);
 
           if (!session || session.status === 'completed' || session.status === 'failed') {
             stopPolling();
@@ -1087,16 +1738,16 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
 
         const bootstrap = async () => {
           applyInputMode(inputModeInput.value);
-          renderStages(null);
+          updateView(null);
 
           try {
-            const latest = await fetchJson('/demo/live/session/latest');
+            const active = await fetchJson('/demo/live/session/active');
 
-            if (latest) {
-              updateView(latest);
+            if (active) {
+              updateView(active);
 
-              if (latest.status === 'queued' || latest.status === 'running') {
-                startPolling(latest.sessionId);
+              if (active.status === 'queued' || active.status === 'running') {
+                startPolling(active.sessionId);
               }
             }
           } catch (error) {
@@ -1123,6 +1774,9 @@ export const createLiveRouter = (options: CreateLiveRouterOptions) => {
     const parsedBody = parseCreateSessionBody((request.body ?? {}) as CreateSessionBody);
 
     if (parsedBody.kind === 'invalid') {
+      logLiveRoute(options.runtimeEnv, 'reject invalid input', {
+        reason: parsedBody.message
+      });
       response.status(400).json({
         error: 'invalid_live_session_input',
         message: parsedBody.message
@@ -1134,7 +1788,17 @@ export const createLiveRouter = (options: CreateLiveRouterOptions) => {
       parsedBody.kind === 'link'
         ? await (async () => {
             try {
+              logLiveRoute(options.runtimeEnv, 'start article import', {
+                articleUrl: parsedBody.articleUrl
+              });
               const importedArticle = await options.newsImporter.import(parsedBody.articleUrl);
+
+              logLiveRoute(options.runtimeEnv, 'article import succeeded', {
+                articleUrl: parsedBody.articleUrl,
+                sourceSite: importedArticle.sourceSite,
+                importStatus: importedArticle.importStatus ?? 'live',
+                cachedAt: importedArticle.cachedAt ?? null
+              });
 
               return {
                 title: importedArticle.title,
@@ -1143,13 +1807,20 @@ export const createLiveRouter = (options: CreateLiveRouterOptions) => {
                 metadata: {
                   articleUrl: importedArticle.sourceUrl,
                   sourceSite: importedArticle.sourceSite,
-                  importMode: 'link'
+                  importMode: 'link',
+                  ...(importedArticle.importStatus ? { importStatus: importedArticle.importStatus } : {}),
+                  ...(importedArticle.cachedAt ? { cachedAt: importedArticle.cachedAt } : {})
                 } satisfies SourceMetadata
               };
             } catch (error) {
+              const message = extractErrorMessage(options.runtimeEnv, error);
+              logLiveRoute(options.runtimeEnv, 'article import failed', {
+                articleUrl: parsedBody.articleUrl,
+                message
+              });
               response.status(400).json({
                 error: 'news_import_failed',
-                message: extractErrorMessage(error)
+                message: isAntiBotImportError(error) ? `${message} 建议改用预置卡片。` : message
               });
               return null;
             }
@@ -1163,12 +1834,24 @@ export const createLiveRouter = (options: CreateLiveRouterOptions) => {
     const result = await options.liveSessionService.startSession(sessionInput);
 
     if (result.kind === 'conflict') {
+      logLiveRoute(options.runtimeEnv, 'reject active session conflict', {
+        sessionId: result.session.sessionId
+      });
       response.status(409).json({
         error: 'live_session_active',
         sessionId: result.session.sessionId
       });
       return;
     }
+
+    logLiveRoute(options.runtimeEnv, 'accepted live session', {
+      sessionId: result.session.sessionId,
+      mode: options.runtimeEnv.paymentMode,
+      sourceType: sessionInput.sourceType ?? 'news',
+      importMode: sessionInput.metadata?.importMode ?? 'manual',
+      importStatus: sessionInput.metadata?.importStatus ?? null,
+      articleUrl: sessionInput.metadata?.articleUrl ?? null
+    });
 
     response.status(202).json({
       sessionId: result.session.sessionId,
@@ -1178,6 +1861,17 @@ export const createLiveRouter = (options: CreateLiveRouterOptions) => {
 
   router.get('/session/latest', async (_request, response) => {
     const session = await options.liveSessionService.readLatestSession();
+
+    if (!session) {
+      response.status(404).json({ error: 'live_session_not_found' });
+      return;
+    }
+
+    response.status(200).json(session);
+  });
+
+  router.get('/session/active', async (_request, response) => {
+    const session = await options.liveSessionService.readActiveSession();
 
     if (!session) {
       response.status(404).json({ error: 'live_session_not_found' });

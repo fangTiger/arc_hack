@@ -68,6 +68,14 @@ export class FileLiveAgentSessionStore {
     return join(this.rootDirectory, 'active.json');
   }
 
+  private async clearActivePointerIfMatches(sessionId: string): Promise<void> {
+    const activePointer = await readJsonFile<SessionPointer>(this.getActivePath());
+
+    if (activePointer?.sessionId === sessionId) {
+      await removeFileIfExists(this.getActivePath());
+    }
+  }
+
   async writeSession(session: LiveAgentSession): Promise<void> {
     await writeJsonFile(this.getSessionPath(session.sessionId), session);
     await writeJsonFile(this.getLatestPath(), { sessionId: session.sessionId } satisfies SessionPointer);
@@ -77,11 +85,7 @@ export class FileLiveAgentSessionStore {
       return;
     }
 
-    const activePointer = await readJsonFile<SessionPointer>(this.getActivePath());
-
-    if (activePointer?.sessionId === session.sessionId) {
-      await removeFileIfExists(this.getActivePath());
-    }
+    await this.clearActivePointerIfMatches(session.sessionId);
   }
 
   async readSession(sessionId: string): Promise<LiveAgentSession | null> {
@@ -105,6 +109,13 @@ export class FileLiveAgentSessionStore {
       return null;
     }
 
-    return this.readSession(activePointer.sessionId);
+    const session = await this.readSession(activePointer.sessionId);
+
+    if (!session || !isActiveStatus(session.status)) {
+      await this.clearActivePointerIfMatches(activePointer.sessionId);
+      return null;
+    }
+
+    return session;
   }
 }

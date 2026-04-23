@@ -99,7 +99,8 @@ describe('buildAgentGraph', () => {
       [
         { name: 'Arc', type: 'organization' },
         { name: 'Arc', type: 'organization' },
-        { name: 'Circle', type: 'organization' }
+        { name: 'Circle', type: 'organization' },
+        { name: 'Ledger', type: 'topic' }
       ],
       [
         { source: 'Arc', relation: 'partners_with', target: 'Circle' },
@@ -119,15 +120,71 @@ describe('buildAgentGraph', () => {
         id: 'Arc:partners_with:Circle',
         source: 'Arc',
         target: 'Circle',
-        label: 'partners_with'
+        label: 'partners_with',
+        provenance: 'original'
       },
       {
         id: 'Arc:serves:AI agents',
         source: 'Arc',
         target: 'AI agents',
-        label: 'serves'
+        label: 'serves',
+        provenance: 'original'
       }
     ]);
     expect(graph.nodes.every((node) => typeof node.x === 'number' && typeof node.y === 'number')).toBe(true);
+  });
+
+  it('should remove isolated entities when relations already exist', () => {
+    const graph = buildAgentGraph(
+      [
+        { name: 'Arc', type: 'organization' },
+        { name: 'Circle', type: 'organization' },
+        { name: 'Ledger', type: 'topic' }
+      ],
+      [{ source: 'Arc', relation: 'mentions', target: 'Circle' }]
+    );
+
+    expect(graph.nodes.map((node) => node.id)).toEqual(['Arc', 'Circle']);
+    expect(graph.edges).toEqual([
+      expect.objectContaining({
+        id: 'Arc:mentions:Circle',
+        provenance: 'original'
+      })
+    ]);
+  });
+
+  it('should derive lightweight edges when the relation list is empty', () => {
+    const graph = buildAgentGraph(
+      [
+        { name: 'Arc', type: 'organization' },
+        { name: 'Circle', type: 'organization' },
+        { name: 'Stablecoin', type: 'topic' },
+        { name: 'Settlement', type: 'topic' }
+      ],
+      []
+    );
+
+    expect(graph.nodes).toHaveLength(4);
+    expect(graph.edges).toHaveLength(3);
+    expect(graph.edges).toEqual([
+      expect.objectContaining({
+        source: 'Arc',
+        target: 'Circle',
+        label: '提到',
+        provenance: 'derived'
+      }),
+      expect.objectContaining({
+        source: 'Arc',
+        target: 'Stablecoin',
+        label: '提到',
+        provenance: 'derived'
+      }),
+      expect.objectContaining({
+        source: 'Arc',
+        target: 'Settlement',
+        label: '提到',
+        provenance: 'derived'
+      })
+    ]);
   });
 });

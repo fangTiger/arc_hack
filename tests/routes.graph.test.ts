@@ -140,6 +140,39 @@ describe('createGraphRouter', () => {
     expect(response.text).toContain('wublock123');
     expect(response.text).toContain('https://wublock123.com/p/654321');
     expect(response.text).toContain('原文');
+    expect(response.text).toContain('derived 仅用于展示连通性');
+  });
+
+  it('should surface import status, cachedAt and derived edge guidance when present', async () => {
+    const app = await createTestAppWithSessions([
+      createSession({
+        sessionId: 'session-cache',
+        source: {
+          sourceType: 'news',
+          title: 'PANews：某协议完成 5000 万美元融资',
+          text: 'PANews 4 月 22 日消息，某协议宣布完成 5000 万美元融资。',
+          metadata: {
+            articleUrl: 'https://www.panewslab.com/articles/0123456789',
+            sourceSite: 'panews',
+            importMode: 'link',
+            importStatus: 'cache',
+            cachedAt: '2026-04-22T11:22:33.000Z'
+          }
+        }
+      })
+    ]);
+
+    const response = await invokeApp(app, {
+      method: 'GET',
+      path: '/demo/graph/session-cache'
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.text).toContain('importStatus');
+    expect(response.text).toContain('缓存回退');
+    expect(response.text).toContain('cachedAt');
+    expect(response.text).toContain('2026-04-22T11:22:33.000Z');
+    expect(response.text).toContain('derived 仅用于展示连通性');
   });
 
   it('should keep old sessions without metadata compatible and return 404 when the session is missing', async () => {

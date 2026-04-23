@@ -188,4 +188,87 @@ describe('RealKnowledgeExtractionProvider', () => {
       ]
     });
   });
+
+  it('should reuse one structured analysis response across entities and relations for the same request', async () => {
+    const fetchImplementation = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  entities: [
+                    { name: 'Arc', type: 'organization' },
+                    { name: 'Circle', type: 'organization' }
+                  ],
+                  relations: [{ source: 'Arc', relation: 'mentions', target: 'Circle' }]
+                })
+              }
+            }
+          ]
+        })
+      });
+    const provider = new RealKnowledgeExtractionProvider({
+      baseUrl: 'https://api.openai.com/v1',
+      model: 'gpt-5.4',
+      fetchImplementation: fetchImplementation as unknown as typeof fetch
+    });
+
+    await expect(provider.extract('entities', strongEntityRequest)).resolves.toEqual({
+      kind: 'entities',
+      entities: [
+        { name: 'Arc', type: 'organization' },
+        { name: 'Circle', type: 'organization' }
+      ]
+    });
+    await expect(provider.extract('relations', strongEntityRequest)).resolves.toEqual({
+      kind: 'relations',
+      relations: [{ source: 'Arc', relation: 'mentions', target: 'Circle' }]
+    });
+    expect(fetchImplementation).toHaveBeenCalledTimes(1);
+  });
+
+  it('should evict a failed structured analysis cache entry so later retries can recover', async () => {
+    const fetchImplementation = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        text: async () => 'temporary failure'
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  entities: [
+                    { name: 'Arc', type: 'organization' },
+                    { name: 'Circle', type: 'organization' }
+                  ],
+                  relations: [{ source: 'Arc', relation: 'mentions', target: 'Circle' }]
+                })
+              }
+            }
+          ]
+        })
+      });
+    const provider = new RealKnowledgeExtractionProvider({
+      baseUrl: 'https://api.openai.com/v1',
+      model: 'gpt-5.4',
+      fetchImplementation: fetchImplementation as unknown as typeof fetch
+    });
+
+    await expect(provider.extract('entities', strongEntityRequest)).rejects.toThrow('status 500');
+    await expect(provider.extract('relations', strongEntityRequest)).resolves.toEqual({
+      kind: 'relations',
+      relations: [{ source: 'Arc', relation: 'mentions', target: 'Circle' }]
+    });
+    expect(fetchImplementation).toHaveBeenCalledTimes(2);
+  });
 });

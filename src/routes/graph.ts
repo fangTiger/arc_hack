@@ -2,6 +2,7 @@ import { Router } from 'express';
 
 import type { AgentSession } from '../demo/agent-graph.js';
 import type { RuntimeEnv } from '../config/env.js';
+import type { SourceMetadata } from '../domain/extraction/types.js';
 import type { FileAgentGraphStore } from '../store/agent-graph-store.js';
 import {
   buildArcExplorerAddressUrl,
@@ -136,6 +137,16 @@ const formatImportMode = (importMode: string): string => {
   }
 };
 
+const formatImportStatus = (importStatus: SourceMetadata['importStatus']): string => {
+  switch (importStatus) {
+    case 'cache':
+      return '缓存回退';
+    case 'live':
+    default:
+      return '实时抓取';
+  }
+};
+
 const renderSourceMetadata = (session: AgentSession): string => {
   const metadata = session.source.metadata;
 
@@ -158,6 +169,8 @@ const renderSourceMetadata = (session: AgentSession): string => {
       } : {})}
       ${renderEvidenceField('sourceSite', metadata.sourceSite ?? 'n/a')}
       ${renderEvidenceField('importMode', metadata.importMode ? formatImportMode(metadata.importMode) : 'n/a')}
+      ${renderEvidenceField('importStatus', metadata.importStatus ? formatImportStatus(metadata.importStatus) : 'n/a')}
+      ${renderEvidenceField('cachedAt', metadata.cachedAt ?? 'n/a')}
       ${renderEvidenceField('title', session.source.title ?? 'n/a')}
     </div>
   `;
@@ -354,6 +367,7 @@ const renderGraphPage = (session: AgentSession, runtimeEnv: RuntimeEnv): string 
         <section class="layout">
           <article class="panel">
             <h2>Graph Nodes</h2>
+            <p class="summary">original 来自真实抽取关系，derived 仅用于展示连通性，不代表真实抽取关系。</p>
             ${renderGraphSvg(session)}
           </article>
 

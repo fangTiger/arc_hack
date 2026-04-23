@@ -2,13 +2,13 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createApp } from '../src/app.js';
 import { loadRuntimeEnv } from '../src/config/env.js';
 import { buildAgentGraph, type AgentSession } from '../src/demo/agent-graph.js';
 import { LiveAgentSessionService, type LiveAgentSession } from '../src/demo/live-session.js';
-import type { AgentGraphRunResult } from '../src/demo/agent-session-runner.js';
+import type { AgentGraphRunOptions, AgentGraphRunResult } from '../src/demo/agent-session-runner.js';
 import type { ExtractionRequest } from '../src/domain/extraction/types.js';
 import type { ImportedArticle } from '../src/domain/news-import/index.js';
 import { FileAgentGraphStore } from '../src/store/agent-graph-store.js';
@@ -88,7 +88,7 @@ const waitForSession = async (
   sessionId: string,
   status: LiveAgentSession['status'] = 'completed'
 ) => {
-  for (let attempt = 0; attempt < 200; attempt += 1) {
+  for (let attempt = 0; attempt < 500; attempt += 1) {
     const session = await store.readSession(sessionId);
 
     if (session?.status === status) {
@@ -102,10 +102,11 @@ const waitForSession = async (
 };
 
 const createTestHarness = (overrides: {
-  runAgentGraphSession?: (options: { sessionId: string; source: ExtractionRequest }) => Promise<AgentGraphRunResult>;
+  runAgentGraphSession?: (options: AgentGraphRunOptions & { sessionId: string }) => Promise<AgentGraphRunResult>;
   newsImporter?: {
     import: (articleUrl: string) => Promise<ImportedArticle>;
   };
+  runtimeEnv?: Partial<Record<string, string>>;
 } = {}) => {
   const workingDirectory = mkdtempSync(join(tmpdir(), 'arc-hack-live-route-'));
   const runtimeEnv = loadRuntimeEnv({
@@ -113,7 +114,8 @@ const createTestHarness = (overrides: {
     PORT: '3000',
     PAYMENT_MODE: 'mock',
     AI_MODE: 'mock',
-    CALL_LOG_PATH: join(workingDirectory, 'call-log.jsonl')
+    CALL_LOG_PATH: join(workingDirectory, 'call-log.jsonl'),
+    ...overrides.runtimeEnv
   });
   const agentGraphStore = new FileAgentGraphStore(join(workingDirectory, 'artifacts', 'agent-graph'));
   const liveSessionStore = new FileLiveAgentSessionStore(join(workingDirectory, 'artifacts', 'live-console'));
@@ -126,6 +128,7 @@ const createTestHarness = (overrides: {
       ? async (options) =>
           customRunAgentGraphSession({
             sessionId: options.sessionIdFactory?.() ?? 'missing-session-id',
+            ...options,
             source: options.source!
           })
       : undefined
@@ -147,7 +150,7 @@ const createTestHarness = (overrides: {
 };
 
 describe('createLiveRouter', () => {
-  it('should render the live console page shell', async () => {
+  it('should render the trusted research workbench shell', async () => {
     const { app } = createTestHarness();
 
     const response = await invokeApp(app, {
@@ -157,18 +160,25 @@ describe('createLiveRouter', () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.text).toContain('Live Agent Console');
-    expect(response.text).toContain('知识图谱 Live Console');
+    expect(response.text).toContain('可信投研工作台');
     expect(response.text).toContain('文章链接');
     expect(response.text).toContain('手动文本');
     expect(response.text).toContain('article-url-input');
     expect(response.text).toContain('preset-card');
+    expect(response.text).toContain('事件总览');
+    expect(response.text).toContain('关键判断');
+    expect(response.text).toContain('证据摘录');
+    expect(response.text).toContain('分析凭证');
+    expect(response.text).toContain('辅助关系图');
     expect(response.text).toContain('吴说获悉：香港虚拟资产 ETF 本周净流入创新高');
     expect(response.text).toContain('香港比特币与以太坊现货 ETF 本周净流入达到近三个月高点');
     expect(response.text).toContain('"importMode":"preset"');
     expect(response.text).toContain('填充示例');
     expect(response.text).toContain('/demo/live/session');
+    expect(response.text).toContain('/demo/live/session/active');
     expect(response.text).toContain('graph-preview');
     expect(response.text).toContain('copyField');
+    expect(response.text).toContain('cdn.jsdelivr.net/npm/echarts@5');
     expect(response.text).toContain('https://testnet.arcscan.app');
     expect(response.text).not.toContain('把 agent 运行过程直接录进同一块屏幕');
   });
@@ -180,8 +190,13 @@ describe('createLiveRouter', () => {
       method: 'GET',
       path: '/demo/live/session/latest'
     });
+    const missingActiveResponse = await invokeApp(app, {
+      method: 'GET',
+      path: '/demo/live/session/active'
+    });
 
     expect(missingLatestResponse.statusCode).toBe(404);
+    expect(missingActiveResponse.statusCode).toBe(404);
 
     const createResponse = await invokeApp(app, {
       method: 'POST',
@@ -203,6 +218,10 @@ describe('createLiveRouter', () => {
     const latestResponse = await invokeApp(app, {
       method: 'GET',
       path: '/demo/live/session/latest'
+    });
+    const activeResponse = await invokeApp(app, {
+      method: 'GET',
+      path: '/demo/live/session/active'
     });
     const detailResponse = await invokeApp(app, {
       method: 'GET',
@@ -231,6 +250,7 @@ describe('createLiveRouter', () => {
     });
     expect(latestResponse.statusCode).toBe(200);
     expect((latestResponse.json as LiveAgentSession).sessionId).toBe(sessionId);
+    expect(activeResponse.statusCode).toBe(404);
     expect(detailResponse.statusCode).toBe(200);
     expect((detailResponse.json as LiveAgentSession).agentSession?.graph.nodes).toHaveLength(2);
     expect(missingResponse.statusCode).toBe(404);
@@ -238,7 +258,8 @@ describe('createLiveRouter', () => {
 
   it('should import a whitelisted articleUrl, then preserve metadata in live payloads and agent session output', async () => {
     const importedArticle: ImportedArticle = {
-      sourceUrl: 'https://wublock123.com/p/654321',
+      sourceUrl: 'https://wublock123.com/p/654321?signature=abc123&token=xyz',
+      canonicalUrl: 'https://wublock123.com/p/654321',
       sourceSite: 'wublock123',
       sourceType: 'news',
       title: '吴说获悉：香港虚拟资产 ETF 本周净流入创新高',
@@ -256,7 +277,7 @@ describe('createLiveRouter', () => {
         sessionId,
         artifactPath: join(tmpdir(), `${sessionId}.json`),
         graphUrl: `http://127.0.0.1:3000/demo/graph/${sessionId}`,
-        session: createCompletedAgentSession(sessionId, source)
+        session: createCompletedAgentSession(sessionId, source!)
       })
     });
 
@@ -287,7 +308,7 @@ describe('createLiveRouter', () => {
         title: importedArticle.title,
         text: importedArticle.text,
         metadata: {
-          articleUrl: importedArticle.sourceUrl,
+          articleUrl: importedArticle.canonicalUrl,
           sourceSite: importedArticle.sourceSite,
           importMode: 'link'
         }
@@ -295,7 +316,7 @@ describe('createLiveRouter', () => {
       agentSession: {
         source: {
           metadata: {
-            articleUrl: importedArticle.sourceUrl,
+            articleUrl: importedArticle.canonicalUrl,
             sourceSite: importedArticle.sourceSite,
             importMode: 'link'
           }
@@ -303,15 +324,81 @@ describe('createLiveRouter', () => {
       }
     });
     expect((latestResponse.json as LiveAgentSession).source.metadata).toEqual({
-      articleUrl: importedArticle.sourceUrl,
+      articleUrl: importedArticle.canonicalUrl,
       sourceSite: importedArticle.sourceSite,
       importMode: 'link'
     });
     expect((detailResponse.json as LiveAgentSession).agentSession?.source.metadata).toEqual({
-      articleUrl: importedArticle.sourceUrl,
+      articleUrl: importedArticle.canonicalUrl,
       sourceSite: importedArticle.sourceSite,
       importMode: 'link'
     });
+  });
+
+  it('should expose live/cache import status and cachedAt in live payloads and the page shell', async () => {
+    const importedArticle: ImportedArticle = {
+      sourceUrl: 'https://www.panewslab.com/articles/0123456789',
+      canonicalUrl: 'https://panewslab.com/articles/0123456789',
+      sourceSite: 'panews',
+      sourceType: 'news',
+      title: 'PANews：某协议完成 5000 万美元融资',
+      text: 'PANews 4 月 22 日消息，某协议宣布完成 5000 万美元融资。',
+      importStatus: 'cache',
+      cachedAt: '2026-04-22T11:22:33.000Z'
+    };
+    const { app, liveSessionStore } = createTestHarness({
+      newsImporter: {
+        import: async (articleUrl: string) => {
+          expect(articleUrl).toBe(importedArticle.sourceUrl);
+          return importedArticle;
+        }
+      },
+      runAgentGraphSession: async ({ sessionId, source }) => ({
+        sessionId,
+        artifactPath: join(tmpdir(), `${sessionId}.json`),
+        graphUrl: `http://127.0.0.1:3000/demo/graph/${sessionId}`,
+        session: createCompletedAgentSession(sessionId, source!)
+      })
+    });
+
+    const createResponse = await invokeApp(app, {
+      method: 'POST',
+      path: '/demo/live/session',
+      body: {
+        articleUrl: importedArticle.sourceUrl
+      }
+    });
+
+    expect(createResponse.statusCode).toBe(202);
+
+    const { sessionId } = createResponse.json as { sessionId: string };
+    const session = await waitForSession(liveSessionStore, sessionId);
+    const latestResponse = await invokeApp(app, {
+      method: 'GET',
+      path: '/demo/live/session/latest'
+    });
+    const pageResponse = await invokeApp(app, {
+      method: 'GET',
+      path: '/demo/live'
+    });
+
+    expect(session?.source.metadata).toEqual({
+      articleUrl: importedArticle.sourceUrl,
+      sourceSite: importedArticle.sourceSite,
+      importMode: 'link',
+      importStatus: 'cache',
+      cachedAt: importedArticle.cachedAt
+    });
+    expect((latestResponse.json as LiveAgentSession).source.metadata).toEqual({
+      articleUrl: importedArticle.sourceUrl,
+      sourceSite: importedArticle.sourceSite,
+      importMode: 'link',
+      importStatus: 'cache',
+      cachedAt: importedArticle.cachedAt
+    });
+    expect(pageResponse.text).toContain('导入状态：实时抓取');
+    expect(pageResponse.text).toContain('导入状态：缓存回退');
+    expect(pageResponse.text).toContain('缓存时间');
   });
 
   it('should create a preset-backed live session from cached text without calling the importer', async () => {
@@ -326,7 +413,7 @@ describe('createLiveRouter', () => {
         sessionId,
         artifactPath: join(tmpdir(), `${sessionId}.json`),
         graphUrl: `http://127.0.0.1:3000/demo/graph/${sessionId}`,
-        session: createCompletedAgentSession(sessionId, source)
+        session: createCompletedAgentSession(sessionId, source!)
       })
     });
 
@@ -359,6 +446,30 @@ describe('createLiveRouter', () => {
       articleUrl: 'https://www.panewslab.com/articles/0123456789',
       sourceSite: 'panews',
       importMode: 'preset'
+    });
+  });
+
+  it('should surface a preset fallback hint when link import hits an anti-bot challenge page', async () => {
+    const { app } = createTestHarness({
+      newsImporter: {
+        import: async () => {
+          throw new Error('新闻导入失败：wublock123 返回了反爬挑战页，当前无法实时抓取该链接。');
+        }
+      }
+    });
+
+    const response = await invokeApp(app, {
+      method: 'POST',
+      path: '/demo/live/session',
+      body: {
+        articleUrl: 'https://www.wublock123.com/articles/kelpdao-exploit-debt-crisis-defi-bad-debt-resolution-58888'
+      }
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json).toEqual({
+      error: 'news_import_failed',
+      message: '新闻导入失败：wublock123 返回了反爬挑战页，当前无法实时抓取该链接。 建议改用预置卡片。'
     });
   });
 
@@ -407,6 +518,223 @@ describe('createLiveRouter', () => {
       expect.stringMatching(/^0x[a-f0-9]{64}$/),
       expect.stringMatching(/^0x[a-f0-9]{64}$/)
     ]);
+  });
+
+  it('should redact private keys from failed live session errors', async () => {
+    const leakedPrivateKey = '0x50fff75e326b04954b6d4b7fb4cbd046d943a640a88a4b3a2e59163dbbfcbece';
+    const { app, liveSessionStore } = createTestHarness({
+      runAgentGraphSession: async (options) => {
+        await options.onProgress?.({
+          type: 'step-started',
+          step: 'summary',
+          at: '2026-04-22T10:00:01.000Z',
+          sessionId: options.sessionId
+        });
+
+        throw new Error(
+          `Command failed: cast send --json --rpc-url https://rpc.testnet.arc.network --private-key ${leakedPrivateKey} 0x5dc554A1A887a34eDcF61650BeF73E6372D5DaE3 recordReceipt(string,string,bytes32)\nerror: boom`
+        );
+      }
+    });
+
+    const createResponse = await invokeApp(app, {
+      method: 'POST',
+      path: '/demo/live/session',
+      body: {
+        title: 'Arc live receipt',
+        text: 'Arc introduced gasless nanopayments for AI agents. Circle provides the settlement layer.'
+      }
+    });
+
+    expect(createResponse.statusCode).toBe(202);
+
+    const { sessionId } = createResponse.json as { sessionId: string };
+    const failedSession = await waitForSession(liveSessionStore, sessionId, 'failed');
+    const latestResponse = await invokeApp(app, {
+      method: 'GET',
+      path: '/demo/live/session/latest'
+    });
+    const detailResponse = await invokeApp(app, {
+      method: 'GET',
+      path: `/demo/live/session/${sessionId}`
+    });
+
+    expect(failedSession?.error).toContain('--private-key [REDACTED]');
+    expect(failedSession?.error).not.toContain(leakedPrivateKey);
+    expect(failedSession?.steps.find((step) => step.status === 'failed')?.error).toContain('[REDACTED]');
+    expect(failedSession?.steps.find((step) => step.status === 'failed')?.error).not.toContain(leakedPrivateKey);
+    expect((latestResponse.json as LiveAgentSession).error).toContain('[REDACTED]');
+    expect((latestResponse.json as LiveAgentSession).error).not.toContain(leakedPrivateKey);
+    expect(
+      (detailResponse.json as LiveAgentSession).steps.find((step) => step.status === 'failed')?.error
+    ).toContain('[REDACTED]');
+    expect(
+      (detailResponse.json as LiveAgentSession).steps.find((step) => step.status === 'failed')?.error
+    ).not.toContain(leakedPrivateKey);
+  });
+
+  it('should persist progress snapshots for gateway mode before the final session completes', async () => {
+    let releaseCompletion: (() => void) | undefined;
+    let resolveSummaryPersisted: (() => void) | undefined;
+    const summaryPersisted = new Promise<void>((resolve) => {
+      resolveSummaryPersisted = resolve;
+    });
+    const { app, liveSessionStore } = createTestHarness({
+      runtimeEnv: {
+        PAYMENT_MODE: 'gateway',
+        CIRCLE_SELLER_ADDRESS: '0x1234567890123456789012345678901234567890'
+      },
+      runAgentGraphSession: async (options) => {
+        const { sessionId, source } = options;
+
+        await options.onProgress?.({
+          type: 'step-started',
+          step: 'summary',
+          at: '2026-04-22T10:00:01.000Z',
+          sessionId
+        });
+        await options.onProgress?.({
+          type: 'step-completed',
+          step: 'summary',
+          at: '2026-04-22T10:00:02.000Z',
+          sessionId,
+          run: {
+            requestId: 'gateway-001',
+            operation: 'summary',
+            price: '$0.004',
+            paymentTransaction: 'gateway-tx-001',
+            paymentAmount: '4000',
+            paymentNetwork: 'arc-testnet',
+            paymentPayer: 'gateway-buyer',
+            payloadHash: '0xsummary'
+          },
+          snapshot: {
+            summary: 'Arc partners with Circle on machine-pay flows.'
+          }
+        });
+        resolveSummaryPersisted?.();
+
+        await new Promise<void>((resolve) => {
+          releaseCompletion = resolve;
+        });
+
+        return {
+          sessionId,
+          artifactPath: join(tmpdir(), `${sessionId}.json`),
+          graphUrl: `http://127.0.0.1:3000/demo/graph/${sessionId}`,
+          session: createCompletedAgentSession(sessionId, source!)
+        };
+      }
+    });
+
+    const createResponse = await invokeApp(app, {
+      method: 'POST',
+      path: '/demo/live/session',
+      body: {
+        title: 'Gateway progress session',
+        text: 'Arc introduced gasless nanopayments for AI agents. Circle provides the settlement layer.'
+      }
+    });
+
+    expect(createResponse.statusCode).toBe(202);
+
+    const { sessionId } = createResponse.json as { sessionId: string };
+    await summaryPersisted;
+    const runningSnapshot = await liveSessionStore.readSession(sessionId);
+
+    expect(runningSnapshot?.status).toBe('running');
+    expect(runningSnapshot?.preview.summary).toBe('Arc partners with Circle on machine-pay flows.');
+    expect(runningSnapshot?.steps.find((step) => step.key === 'summary')).toMatchObject({
+      key: 'summary',
+      status: 'completed',
+      requestId: 'gateway-001',
+      paymentTransaction: 'gateway-tx-001'
+    });
+
+    releaseCompletion?.();
+
+    const completedSession = await waitForSession(liveSessionStore, sessionId);
+
+    expect(completedSession.status).toBe('completed');
+  });
+
+  it('should redact sensitive values at the live session log sink', async () => {
+    const leakedPrivateKey = '0x50fff75e326b04954b6d4b7fb4cbd046d943a640a88a4b3a2e59163dbbfcbece';
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    try {
+      const { app, liveSessionStore } = createTestHarness({
+        runtimeEnv: {
+          NODE_ENV: 'development',
+          ARC_PRIVATE_KEY: leakedPrivateKey
+        },
+        runAgentGraphSession: async () => {
+          throw new Error(`signer rejected ${leakedPrivateKey}`);
+        }
+      });
+
+      const createResponse = await invokeApp(app, {
+        method: 'POST',
+        path: '/demo/live/session',
+        body: {
+          title: 'Arc live receipt',
+          text: 'Arc introduced gasless nanopayments for AI agents. Circle provides the settlement layer.'
+        }
+      });
+
+      expect(createResponse.statusCode).toBe(202);
+
+      const { sessionId } = createResponse.json as { sessionId: string };
+      await waitForSession(liveSessionStore, sessionId, 'failed');
+
+      const logs = logSpy.mock.calls.map((call) => call.join(' ')).join('\n');
+
+      expect(logs).toContain('[REDACTED]');
+      expect(logs).not.toContain(leakedPrivateKey);
+    } finally {
+      logSpy.mockRestore();
+    }
+  });
+
+  it('should redact sensitive values at the live route log sink', async () => {
+    const leakedPrivateKey = '0x60fff75e326b04954b6d4b7fb4cbd046d943a640a88a4b3a2e59163dbbfcbece';
+    const signedArticleUrl = 'https://wublock123.com/p/654321?signature=abc123&token=xyz';
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    try {
+      const { app } = createTestHarness({
+        runtimeEnv: {
+          NODE_ENV: 'development',
+          ARC_PRIVATE_KEY: leakedPrivateKey
+        },
+        newsImporter: {
+          import: async () => {
+            throw new Error(`ARC_PRIVATE_KEY=${leakedPrivateKey}`);
+          }
+        }
+      });
+
+      const response = await invokeApp(app, {
+        method: 'POST',
+        path: '/demo/live/session',
+        body: {
+          articleUrl: signedArticleUrl
+        }
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect((response.json as { message: string }).message).toContain('[REDACTED]');
+      expect((response.json as { message: string }).message).not.toContain(leakedPrivateKey);
+
+      const logs = logSpy.mock.calls.map((call) => call.join(' ')).join('\n');
+
+      expect(logs).toContain('[REDACTED]');
+      expect(logs).not.toContain(leakedPrivateKey);
+      expect(logs).toContain('https://wublock123.com/p/654321?[REDACTED]');
+      expect(logs).not.toContain('signature=abc123');
+    } finally {
+      logSpy.mockRestore();
+    }
   });
 
   it('should reject invalid input and block duplicate creation when an active session already exists', async () => {
@@ -486,6 +814,11 @@ describe('createLiveRouter', () => {
       await sleep(10);
     }
 
+    const activeResponse = await invokeApp(app, {
+      method: 'GET',
+      path: '/demo/live/session/active'
+    });
+
     const duplicateResponse = await invokeApp(app, {
       method: 'POST',
       path: '/demo/live/session',
@@ -495,6 +828,8 @@ describe('createLiveRouter', () => {
       }
     });
 
+    expect(activeResponse.statusCode).toBe(200);
+    expect((activeResponse.json as LiveAgentSession).sessionId).toBe(sessionId);
     expect(duplicateResponse.statusCode).toBe(409);
     expect(duplicateResponse.json).toMatchObject({
       error: 'live_session_active',

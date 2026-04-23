@@ -1,15 +1,11 @@
 import { createHash } from 'node:crypto';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
+import type { Address, Hex } from 'viem';
+import { createWalletClient, encodeFunctionData, http } from 'viem';
+import { privateKeyToAccount } from 'viem/accounts';
 
 import type { RuntimeEnv } from '../../config/env.js';
 import type { ExtractionOperation } from '../extraction/types.js';
-
-const execFileAsync = promisify(execFile);
-
-const txHashPattern = /^0x[a-fA-F0-9]{64}$/;
-
-const resolveCastBinary = (): string => process.env.CAST_BIN ?? 'cast';
+import { extractSafeErrorMessage } from '../../support/sensitive.js';
 
 export type ReceiptWriteInput = {
   requestId: string;
@@ -39,33 +35,26 @@ type ArcReceiptWriterConfig = {
 
 type ReceiptWriterConfig = MockReceiptWriterConfig | ArcReceiptWriterConfig;
 
+const usageReceiptAbi = [
+  {
+    type: 'function',
+    name: 'recordReceipt',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'requestId', type: 'string' },
+      { name: 'operation', type: 'string' },
+      { name: 'payloadHash', type: 'bytes32' }
+    ],
+    outputs: []
+  }
+] as const;
+
 const buildDeterministicHash = (input: ReceiptWriteInput): `0x${string}` => {
   const digest = createHash('sha256')
     .update(`${input.requestId}:${input.operation}:${input.payloadHash}`)
     .digest('hex');
 
   return `0x${digest}` as `0x${string}`;
-};
-
-const parseArcTransactionHash = (stdout: string): `0x${string}` => {
-  let payload: unknown;
-
-  try {
-    payload = JSON.parse(stdout);
-  } catch {
-    throw new Error('Arc receipt writer returned invalid JSON output.');
-  }
-
-  const txHash =
-    typeof payload === 'object' && payload !== null && 'transactionHash' in payload
-      ? payload.transactionHash
-      : undefined;
-
-  if (typeof txHash !== 'string' || !txHashPattern.test(txHash)) {
-    throw new Error('Arc receipt writer did not return a valid transaction hash.');
-  }
-
-  return txHash as `0x${string}`;
 };
 
 class MockReceiptWriter implements ReceiptWriter {
@@ -81,24 +70,35 @@ class ArcReceiptWriter implements ReceiptWriter {
   constructor(private readonly config: ArcReceiptWriterConfig) {}
 
   async write(input: ReceiptWriteInput): Promise<ReceiptWriteResult> {
-    const { stdout } = await execFileAsync(resolveCastBinary(), [
-      'send',
-      '--json',
-      '--rpc-url',
-      this.config.rpcUrl,
-      '--private-key',
-      this.config.privateKey,
-      this.config.contractAddress,
-      'recordReceipt(string,string,bytes32)',
-      input.requestId,
-      input.operation,
-      input.payloadHash
-    ]);
+    const account = privateKeyToAccount(this.config.privateKey as Hex);
+    const walletClient = createWalletClient({
+      account,
+      transport: http(this.config.rpcUrl)
+    });
 
-    return {
-      mode: 'arc',
-      txHash: parseArcTransactionHash(stdout)
-    };
+    try {
+      const txHash = await walletClient.sendTransaction({
+        account,
+        chain: undefined,
+        to: this.config.contractAddress as Address,
+        data: encodeFunctionData({
+          abi: usageReceiptAbi,
+          functionName: 'recordReceipt',
+          args: [input.requestId, input.operation, input.payloadHash as Hex]
+        })
+      });
+
+      return {
+        mode: 'arc',
+        txHash: txHash as `0x${string}`
+      };
+    } catch (error) {
+      throw new Error(
+        extractSafeErrorMessage(error, 'Arc receipt writer command failed.', {
+          sensitiveValues: [this.config.privateKey]
+        })
+      );
+    }
   }
 }
 

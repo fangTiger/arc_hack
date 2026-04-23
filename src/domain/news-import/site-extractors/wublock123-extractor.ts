@@ -24,7 +24,16 @@ const extractWublock123Title = (html: string): string =>
       findFirstCapture(html, [/<title\b[^>]*>([\s\S]*?)<\/title>/iu])
   );
 
+const looksLikeWublock123ChallengePage = (html: string): boolean =>
+  /<script>\s*var\s+arg1=['"][0-9a-f]{16,}['"]/iu.test(html) ||
+  /document\.cookie/iu.test(html) ||
+  /location\.href/iu.test(html);
+
 export const extractWublock123Article = (input: SiteExtractorInput): ImportedArticle => {
+  if (looksLikeWublock123ChallengePage(input.html)) {
+    throw new Error('新闻导入失败：wublock123 返回了反爬挑战页，当前无法实时抓取该链接。');
+  }
+
   const title = extractWublock123Title(input.html);
   const excerpt = normalizeExcerpt(extractMetaContent(input.html, [{ attribute: 'property', value: 'og:description' }]));
   const paragraphs = extractParagraphs(extractWublock123Body(input.html));

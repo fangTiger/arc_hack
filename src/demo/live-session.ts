@@ -19,6 +19,12 @@ import {
   type AgentGraphRunnerProgressEvent
 } from './agent-session-runner.js';
 import { FileLiveAgentSessionStore } from '../store/live-session-store.js';
+import {
+  collectRuntimeSensitiveValues,
+  extractSafeErrorMessage,
+  sanitizeSensitiveValue,
+  stripSensitiveUrlParts
+} from '../support/sensitive.js';
 
 export const LIVE_SESSION_STEP_KEYS = ['summary', 'entities', 'relations'] as const;
 
@@ -112,10 +118,13 @@ const normalizeMetadata = (metadata: SourceMetadata | undefined): SourceMetadata
   }
 
   const normalizedArticleUrl = metadata.articleUrl?.trim();
+  const normalizedCachedAt = metadata.cachedAt?.trim();
   const normalizedMetadata: SourceMetadata = {
-    ...(normalizedArticleUrl ? { articleUrl: normalizedArticleUrl } : {}),
+    ...(normalizedArticleUrl ? { articleUrl: stripSensitiveUrlParts(normalizedArticleUrl) } : {}),
     ...(metadata.sourceSite ? { sourceSite: metadata.sourceSite } : {}),
-    ...(metadata.importMode ? { importMode: metadata.importMode } : {})
+    ...(metadata.importMode ? { importMode: metadata.importMode } : {}),
+    ...(metadata.importStatus ? { importStatus: metadata.importStatus } : {}),
+    ...(normalizedCachedAt ? { cachedAt: normalizedCachedAt } : {})
   };
 
   return Object.keys(normalizedMetadata).length > 0 ? normalizedMetadata : undefined;
@@ -232,12 +241,26 @@ const createFailedSession = (session: LiveAgentSession, errorMessage: string, fa
   };
 };
 
-const extractErrorMessage = (error: unknown): string => {
-  if (error instanceof Error) {
-    return error.message;
+const extractErrorMessage = (runtimeEnv: RuntimeEnv, error: unknown): string => {
+  return extractSafeErrorMessage(error, 'Unknown live session error.', {
+    sensitiveValues: collectRuntimeSensitiveValues(runtimeEnv)
+  });
+};
+
+const logLiveSession = (
+  runtimeEnv: RuntimeEnv,
+  message: string,
+  details: Record<string, unknown>
+): void => {
+  if (runtimeEnv.nodeEnv === 'test') {
+    return;
   }
 
-  return 'Unknown live session error.';
+  const safeDetails = sanitizeSensitiveValue(details, {
+    sensitiveValues: collectRuntimeSensitiveValues(runtimeEnv)
+  });
+
+  console.log(`[live-session] ${message} ${JSON.stringify(safeDetails, null, 0)}`);
 };
 
 const buildSource = (input: LiveAgentSessionCreateInput): ExtractionRequest => ({
@@ -258,6 +281,9 @@ export class LiveAgentSessionService {
     const activeSession = await this.options.liveSessionStore.readActiveSession();
 
     if (isActiveLiveSession(activeSession)) {
+      logLiveSession(this.options.runtimeEnv, 'conflict active session exists', {
+        sessionId: activeSession.sessionId
+      });
       return {
         kind: 'conflict',
         session: activeSession
@@ -271,6 +297,15 @@ export class LiveAgentSessionService {
     });
 
     await this.options.liveSessionStore.writeSession(session);
+
+    logLiveSession(this.options.runtimeEnv, 'queued session', {
+      sessionId: session.sessionId,
+      mode: session.mode,
+      sourceType: session.source.sourceType,
+      importMode: session.source.metadata?.importMode ?? 'manual',
+      importStatus: session.source.metadata?.importStatus ?? null,
+      articleUrl: session.source.metadata?.articleUrl ?? null
+    });
 
     queueMicrotask(() => {
       void this.executeSession(session);
@@ -290,6 +325,10 @@ export class LiveAgentSessionService {
     return this.options.liveSessionStore.readLatestSession();
   }
 
+  async readActiveSession(): Promise<LiveAgentSession | null> {
+    return this.options.liveSessionStore.readActiveSession();
+  }
+
   private async executeSession(initialSession: LiveAgentSession): Promise<void> {
     let session: LiveAgentSession = {
       ...initialSession,
@@ -299,6 +338,10 @@ export class LiveAgentSessionService {
     };
 
     await this.options.liveSessionStore.writeSession(session);
+    logLiveSession(this.options.runtimeEnv, 'start execution', {
+      sessionId: session.sessionId,
+      mode: session.mode
+    });
 
     try {
       const result = await this.runAgentGraphSessionImpl({
@@ -309,9 +352,12 @@ export class LiveAgentSessionService {
         graphBaseUrl: this.options.graphBaseUrl,
         sessionIdFactory: () => session.sessionId,
         onProgress: async (event) => {
-          if (this.options.runtimeEnv.paymentMode !== 'mock') {
-            return;
-          }
+          logLiveSession(this.options.runtimeEnv, event.type, {
+            sessionId: event.sessionId,
+            step: event.step,
+            requestId: event.type === 'step-completed' ? event.run.requestId : null,
+            paymentTransaction: event.type === 'step-completed' ? event.run.paymentTransaction : null
+          });
 
           session = applyProgressEvent(session, event);
           await this.options.liveSessionStore.writeSession(session);
@@ -334,9 +380,19 @@ export class LiveAgentSessionService {
         steps: hydrateCompletedStepsFromAgentSession(session, result.session, completedAt)
       };
       await this.options.liveSessionStore.writeSession(session);
+      logLiveSession(this.options.runtimeEnv, 'completed session', {
+        sessionId: session.sessionId,
+        successfulRuns: result.session.runs.length,
+        totalPrice: result.session.totals.totalPrice,
+        graphUrl: result.graphUrl
+      });
     } catch (error) {
-      session = createFailedSession(session, extractErrorMessage(error), new Date().toISOString());
+      session = createFailedSession(session, extractErrorMessage(this.options.runtimeEnv, error), new Date().toISOString());
       await this.options.liveSessionStore.writeSession(session);
+      logLiveSession(this.options.runtimeEnv, 'failed session', {
+        sessionId: session.sessionId,
+        error: session.error ?? 'Unknown live session error.'
+      });
     }
   }
 }

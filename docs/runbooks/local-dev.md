@@ -116,6 +116,7 @@ live console 输入模式：
 - `文章链接`：后端会先导入白名单原文，再创建 live session
 - `手动文本`：直接提交输入框内容
 - `预置卡片`：直接提交本地缓存导入结果，脱网也能演示
+- 如果链接导入回退到缓存，live / graph 页面都会显示 `导入状态：缓存回退` 与 `缓存时间`
 
 live session 状态产物：
 - `artifacts/live-console/<sessionId>/live-session.json`
@@ -175,7 +176,7 @@ http://127.0.0.1:3000/demo/live
 
 推荐录屏路径：
 1. 先用 `预置卡片` 录一遍，证明脱网也能稳定演示。
-2. 完成后切到 `GET /demo/graph/latest`，展示来源元数据和可点击原文链接。
+2. 完成后切到 `GET /demo/graph/latest`，展示来源元数据、`importStatus` / `cachedAt` 和 `derived` 连通性说明。
 3. 如果现场网络稳定，再补录一条 `文章链接` 模式，使用白名单来源 URL。
 
 边界：

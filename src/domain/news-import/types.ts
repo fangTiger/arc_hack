@@ -4,11 +4,14 @@ export type SupportedNewsSite = (typeof SUPPORTED_NEWS_SITES)[number];
 
 export type ImportedArticle = {
   sourceUrl: string;
+  canonicalUrl?: string;
   sourceSite: SupportedNewsSite;
   sourceType: 'news';
   title: string;
   text: string;
   excerpt?: string;
+  importStatus?: 'live' | 'cache';
+  cachedAt?: string;
 };
 
 export type DetectedNewsSource = {
@@ -28,6 +31,7 @@ export type NewsImportServiceOptions = {
   timeoutMs?: number;
   maxResponseBytes?: number;
   maxTextLength?: number;
+  cacheRootDirectory?: string;
 };
 
 export type SiteExtractorInput = {
