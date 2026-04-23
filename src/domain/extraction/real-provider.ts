@@ -34,15 +34,15 @@ const buildOperationInstruction = (operation: ExtractionOperation): string => {
   }
 
   if (operation === 'entities') {
-    return '请输出 JSON：{"kind":"entities","entities":[{"name":"...","type":"organization|person|topic"}]}。实体最多 4 个；若文本信息弱，也请返回 2-4 个有限 topic，不要返回空数组。';
+    return '请输出 JSON：{"kind":"entities","entities":[{"name":"...","type":"organization|person|topic"}]}。强信息文本优先返回 6-8 个关键实体；若文本信息弱，也请返回 2-4 个有限 topic，不要返回空数组。';
   }
 
-  return '请输出 JSON：{"kind":"relations","relations":[{"source":"...","relation":"...","target":"..."}]}。关系最多 3 条；若文本信息弱，也请优先返回 1-3 条弱关系（如 日期、状态、描述、提到），不要返回空数组。';
+  return '请输出 JSON：{"kind":"relations","relations":[{"source":"...","relation":"...","target":"..."}]}。强信息文本优先返回 3-10 条关键关系；若文本信息弱，也请优先返回 1-3 条弱关系（如 日期、状态、描述、提到），不要返回空数组。';
 };
 
 const buildStructuredAnalysisInstruction = () =>
   '请输出 JSON：{"entities":[{"name":"...","type":"organization|person|topic"}],"relations":[{"source":"...","relation":"...","target":"..."}]}。' +
-  'source 和 target 必须引用 entities 中出现的名称。entities 最多 4 个，relations 最多 3 条；若文本信息弱，也请返回有限 topic 与弱关系，不要返回空对象。';
+  'source 和 target 必须引用 entities 中出现的名称。entities 最多 8 个，relations 最多 10 条；强信息文本优先抽取 6-8 个关键实体与 3-10 条关键关系。若文本信息弱，也请返回有限 topic 与弱关系，不要返回空对象。';
 
 export class RealKnowledgeExtractionProvider implements KnowledgeExtractionProvider {
   private readonly baseUrl: string;

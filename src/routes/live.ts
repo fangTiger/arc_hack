@@ -17,6 +17,7 @@ import {
   formatImportModeLabel,
   formatImportStatusLabel,
   getDisplayHeadline,
+  getDisplaySourceTitle,
   getDisplaySource,
   getEntities,
   getGraphPresentationMode,
@@ -26,7 +27,8 @@ import {
   getSummary,
   getTotalPrice,
   inferEventType,
-  inferImportance
+  inferImportance,
+  isGeneratedSourceTitle
 } from './live-workbench.js';
 import { getArcExplorerBaseUrl } from '../support/arc-explorer.js';
 import {
@@ -269,11 +271,27 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
   const presetCards = liveNewsPresets
     .map(
       (preset) => `
-        <article class="preset-card" data-preset-id="${escapeHtml(preset.id)}">
+        <article
+          class="preset-card card-detail-trigger"
+          data-preset-id="${escapeHtml(preset.id)}"
+          data-detail-kicker="预置样本"
+          data-detail-title="${escapeHtml(preset.title)}"
+          data-detail-subtitle="${escapeHtml(SUPPORTED_NEWS_SOURCE_LABELS[preset.sourceSite])}"
+          data-detail-body="${escapeHtml(preset.excerpt)}"
+          data-detail-quote="${escapeHtml(preset.text.split('\n\n').slice(0, 2).join('\n\n'))}"
+          data-detail-meta="${escapeHtml(JSON.stringify([
+            SUPPORTED_NEWS_SOURCE_LABELS[preset.sourceSite],
+            new URL(preset.articleUrl).hostname,
+            '已缓存导入结果'
+          ]))}"
+          tabindex="0"
+          role="button"
+        >
           <div class="preset-meta">
             <span>${escapeHtml(SUPPORTED_NEWS_SOURCE_LABELS[preset.sourceSite])}</span>
             <span>${escapeHtml(new URL(preset.articleUrl).hostname)}</span>
           </div>
+          <div class="card-detail-hint">点击查看详情</div>
           <h3>${escapeHtml(preset.title)}</h3>
           <p class="preset-excerpt">${escapeHtml(preset.excerpt)}</p>
           <p class="preset-snippet">${escapeHtml(preset.text.split('\n\n')[0])}</p>
@@ -288,7 +306,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
     <head>
       <meta charset="utf-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1" />
-      <title>可信投研工作台 | Live Agent Console</title>
+      <title>可信投研工作台</title>
       <style>
         :root {
           color-scheme: light;
@@ -374,8 +392,18 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
 
         .layout {
           display: grid;
-          grid-template-columns: minmax(320px, 0.9fr) minmax(0, 1.1fr);
+          grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.72fr);
           gap: 18px;
+        }
+
+        .input-panel {
+          order: 2;
+          position: sticky;
+          top: 16px;
+        }
+
+        .result-panel {
+          order: 1;
         }
 
         .panel {
@@ -485,6 +513,22 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           font-size: 18px;
         }
 
+        .card-detail-trigger {
+          cursor: pointer;
+        }
+
+        .card-detail-trigger:focus-visible {
+          outline: 2px solid rgba(15, 118, 110, 0.48);
+          outline-offset: 2px;
+        }
+
+        .card-detail-hint {
+          font-size: 12px;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          color: var(--accent);
+        }
+
         .preset-meta {
           display: flex;
           justify-content: space-between;
@@ -574,7 +618,8 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           margin-top: 18px;
         }
 
-        .graph-preview {
+        .graph-preview,
+        .graph-surface {
           margin-top: 18px;
           border-radius: 22px;
           border: 1px solid rgba(148, 163, 184, 0.22);
@@ -585,7 +630,8 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           padding: 18px;
         }
 
-        .graph-preview svg {
+        .graph-preview svg,
+        .graph-surface svg {
           width: 100%;
           height: auto;
           display: block;
@@ -888,6 +934,70 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           background: rgba(248, 250, 252, 0.92);
         }
 
+        .detail-modal {
+          position: fixed;
+          inset: 0;
+          display: grid;
+          place-items: center;
+          padding: 20px;
+          background: rgba(15, 23, 42, 0.48);
+          backdrop-filter: blur(8px);
+          z-index: 20;
+        }
+
+        .detail-dialog {
+          width: min(820px, 100%);
+          max-height: min(80vh, 920px);
+          overflow: auto;
+          border-radius: 28px;
+          border: 1px solid rgba(255, 255, 255, 0.2);
+          background:
+            radial-gradient(circle at top right, rgba(15, 118, 110, 0.12), transparent 12rem),
+            rgba(255, 251, 245, 0.98);
+          box-shadow: 0 26px 60px rgba(15, 23, 42, 0.22);
+          padding: 22px;
+        }
+
+        .detail-dialog-top {
+          display: flex;
+          justify-content: space-between;
+          gap: 16px;
+          align-items: flex-start;
+        }
+
+        .detail-dialog-top h2 {
+          margin: 0;
+          font-size: clamp(1.5rem, 3vw, 2.2rem);
+        }
+
+        .detail-dialog-body {
+          display: grid;
+          gap: 14px;
+          margin-top: 18px;
+        }
+
+        .detail-body {
+          margin: 0;
+          line-height: 1.75;
+          color: var(--muted);
+        }
+
+        .detail-quote {
+          margin: 0;
+          padding: 16px 18px;
+          border-radius: 20px;
+          border: 1px solid rgba(148, 163, 184, 0.22);
+          background: rgba(255, 255, 255, 0.88);
+          color: var(--ink);
+          line-height: 1.75;
+        }
+
+        .detail-meta {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px;
+        }
+
         .hero,
         .overview-card,
         .judgment-card,
@@ -916,6 +1026,15 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           }
         }
 
+        @media (max-width: 1100px) {
+          .preset-grid,
+          .judgment-grid,
+          .evidence-list,
+          .workbench-sidebar {
+            grid-template-columns: 1fr;
+          }
+        }
+
         @media (max-width: 940px) {
           .layout {
             grid-template-columns: 1fr;
@@ -923,6 +1042,15 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
 
           .workbench-grid {
             grid-template-columns: 1fr;
+          }
+
+          .input-panel {
+            position: static;
+            order: 2;
+          }
+
+          .result-panel {
+            order: 1;
           }
 
           textarea {
@@ -934,36 +1062,32 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
     <body>
       <main>
         <section class="hero">
-          <div class="eyebrow"><span>Live Agent Console</span><span>Mode ${escapeHtml(runtimeEnv.paymentMode)}</span></div>
+          <div class="eyebrow"><span>资讯分析工作台</span><span>Mode ${escapeHtml(runtimeEnv.paymentMode)}</span></div>
           <h1>可信投研工作台</h1>
-          <p>把一条资讯转成可判断、可复核、可验证的投研线索。比赛版优先保证分析结果稳定，因此聚焦白名单链接、手动正文和预置样本三种输入方式，先把事件判断、关键结论、证据摘录与分析凭证讲清楚。</p>
-          <p class="mode-note">导入状态：实时抓取 / 导入状态：缓存回退。辅助关系图中的 derived 仅用于展示连通性，不代表真实抽取关系；可信不代表机器永远正确，而是判断有出处、调用可回看。</p>
+          <p>输入一条资讯后，页面会把事件判断、关键主体、证据摘录和关系图放进同一个工作区，方便在一屏内来回比对。</p>
+          <p class="mode-note">支持白名单链接、手动正文和预置样本。导入状态：实时抓取 / 导入状态：缓存回退；图中的 derived 连边只用于辅助浏览，不代表真实抽取关系。</p>
         </section>
 
         <section class="layout">
-          <article class="panel">
-            <h2>输入区</h2>
+          <article class="panel input-panel">
+            <h2>分析入口</h2>
             <div class="input-grid">
               <label>
                 输入模式
                 <select id="input-mode-input">
-                  <option value="link" selected>文章链接</option>
-                  <option value="manual">手动文本</option>
+                  <option value="link">文章链接</option>
+                  <option value="manual" selected>手动文本</option>
                 </select>
               </label>
-              <p class="mode-note">支持站点：${escapeHtml(Object.values(SUPPORTED_NEWS_SOURCE_LABELS).join(' / '))}。链接模式会提交到 /demo/live/session 并先执行导入。</p>
+              <p class="mode-note">默认使用手动正文输入。支持站点：${escapeHtml(Object.values(SUPPORTED_NEWS_SOURCE_LABELS).join(' / '))}。手动模式下系统会基于正文自动生成展示标题；链接模式会提交到 /demo/live/session 并先执行导入。</p>
 
               <label id="article-url-field">
                 文章链接
                 <input id="article-url-input" placeholder="https://wublock123.com/p/654321" />
               </label>
 
-              <div id="manual-fields" class="hidden">
+              <div id="manual-fields">
                 <div class="input-grid">
-                  <label>
-                    标题
-                    <input id="title-input" value="${escapeHtml(sample.title ?? '')}" />
-                  </label>
                   <label>
                     Source Type
                     <select id="source-type-input">
@@ -979,20 +1103,20 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
               </div>
 
               <div class="button-row">
-                <button id="start-button" class="primary" type="button">开始演示</button>
+                <button id="start-button" class="primary" type="button">开始分析</button>
                 <button id="fill-sample-button" class="secondary" type="button">填充示例</button>
               </div>
-              <p id="form-message" class="muted">页面只会自动恢复仍在运行中的 live session，完成或失败结果不会默认回显。</p>
+              <p id="form-message" class="muted">页面只会自动恢复仍在运行中的分析任务，完成或失败结果不会默认回显。</p>
 
               <section class="section-heading">
                 <h3>预置新闻卡片</h3>
-                <p class="muted">卡片里内置了缓存导入结果，点击后会直接以 text + metadata.importMode="preset" 创建 live session。</p>
+                <p class="muted">卡片里内置了缓存导入结果。点击卡片可以先看摘要，再选择直接启动分析。</p>
               </section>
               <section class="preset-grid">${presetCards}</section>
             </div>
           </article>
 
-          <article class="panel">
+          <article class="panel result-panel">
             <div class="workbench-top">
               <div>
                 <h2>可信投研工作台</h2>
@@ -1003,8 +1127,9 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
 
             <section class="workbench-grid" aria-live="polite">
               <div class="workbench-main">
-                <article class="overview-card">
+                <article id="overview-card" class="overview-card card-detail-trigger" tabindex="0" role="button">
                   <div class="section-kicker">事件总览</div>
+                  <div class="card-detail-hint">点击查看完整摘要</div>
                   <h3 id="event-headline">等待分析开始</h3>
                   <p id="event-summary">选择一条资讯后，系统会先生成事件判断，再补全主体、证据和分析凭证。</p>
                   <div id="event-metrics" class="metric-grid">
@@ -1073,9 +1198,9 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
                   <div id="entity-preview" class="entity-list muted">摘要与实体抽取完成后，这里会显示本次最值得关注的主体。</div>
                 </article>
 
-                <article class="sidebar-card">
+                <article class="sidebar-card graph-card">
                   <div class="section-kicker">辅助关系图</div>
-                  <section id="graph-preview" class="graph-preview" aria-live="polite">
+                  <section id="graph-preview" class="graph-preview graph-surface" aria-live="polite">
                     <p class="muted">辅助关系图会在这里显示，用于快速扫清主体之间的连接，不承担主结论职责。</p>
                   </section>
                 </article>
@@ -1083,6 +1208,24 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
             </section>
           </article>
         </section>
+
+        <div id="detail-modal" class="detail-modal hidden" aria-hidden="true">
+          <div class="detail-dialog" role="dialog" aria-modal="true" aria-labelledby="detail-modal-title">
+            <div class="detail-dialog-top">
+              <div>
+                <div id="detail-modal-kicker" class="section-kicker">详情</div>
+                <h2 id="detail-modal-title">卡片详情</h2>
+                <p id="detail-modal-subtitle" class="mode-note">点击卡片后，这里会展示完整内容与相关上下文。</p>
+              </div>
+              <button id="detail-modal-close" class="secondary" type="button">关闭</button>
+            </div>
+            <div class="detail-dialog-body">
+              <p id="detail-modal-body" class="detail-body"></p>
+              <blockquote id="detail-modal-quote" class="detail-quote hidden"></blockquote>
+              <div id="detail-modal-meta" class="detail-meta"></div>
+            </div>
+          </div>
+        </div>
       </main>
 
       <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
@@ -1093,7 +1236,8 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
         const state = {
           pollingTimer: null,
           sessionId: null,
-          graphChart: null
+          graphChart: null,
+          lastSession: null
         };
         const stageOrder = ['create', 'summary', 'entities', 'relations', 'graph'];
         const stageLabels = {
@@ -1109,10 +1253,12 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           running: '分析中',
           completed: '已完成',
           failed: '分析失败',
+          interrupted: '连接中断',
           pending: '待执行'
         };
         const stageGrid = document.getElementById('stage-grid');
         const overallStatus = document.getElementById('overall-status');
+        const overviewCard = document.getElementById('overview-card');
         const eventHeadline = document.getElementById('event-headline');
         const eventSummary = document.getElementById('event-summary');
         const eventMetrics = document.getElementById('event-metrics');
@@ -1128,12 +1274,19 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
         const articleUrlField = document.getElementById('article-url-field');
         const articleUrlInput = document.getElementById('article-url-input');
         const manualFields = document.getElementById('manual-fields');
-        const titleInput = document.getElementById('title-input');
         const sourceTypeInput = document.getElementById('source-type-input');
         const textInput = document.getElementById('text-input');
         const startButton = document.getElementById('start-button');
         const fillSampleButton = document.getElementById('fill-sample-button');
         const presetButtons = document.querySelectorAll('.preset-launch-button');
+        const detailModal = document.getElementById('detail-modal');
+        const detailModalClose = document.getElementById('detail-modal-close');
+        const detailModalKicker = document.getElementById('detail-modal-kicker');
+        const detailModalTitle = document.getElementById('detail-modal-title');
+        const detailModalSubtitle = document.getElementById('detail-modal-subtitle');
+        const detailModalBody = document.getElementById('detail-modal-body');
+        const detailModalQuote = document.getElementById('detail-modal-quote');
+        const detailModalMeta = document.getElementById('detail-modal-meta');
 
         window.addEventListener('resize', () => {
           if (state.graphChart) {
@@ -1154,6 +1307,8 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
         ${getRelations.toString()}
         ${getSourceMetadata.toString()}
         ${getDisplayHeadline.toString()}
+        ${getDisplaySourceTitle.toString()}
+        ${isGeneratedSourceTitle.toString()}
         ${inferEventType.toString()}
         ${inferImportance.toString()}
         ${getDisplaySource.toString()}
@@ -1253,6 +1408,41 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           </article>
         \`;
 
+        const closeDetailModal = () => {
+          if (!detailModal) {
+            return;
+          }
+
+          detailModal.classList.add('hidden');
+          detailModal.setAttribute('aria-hidden', 'true');
+        };
+
+        const openDetailModal = (payload) => {
+          if (!detailModal || !detailModalTitle || !detailModalSubtitle || !detailModalBody || !detailModalQuote || !detailModalMeta || !detailModalKicker) {
+            return;
+          }
+
+          const metaEntries = (() => {
+            try {
+              return JSON.parse(String(payload.meta ?? '[]'));
+            } catch {
+              return [];
+            }
+          })();
+
+          detailModalKicker.textContent = payload.kicker || '卡片详情';
+          detailModalTitle.textContent = payload.title || '未命名卡片';
+          detailModalSubtitle.textContent = payload.subtitle || '完整内容与相关上下文';
+          detailModalBody.textContent = payload.body || '暂无更多说明。';
+          detailModalQuote.textContent = payload.quote || '';
+          detailModalQuote.classList.toggle('hidden', !payload.quote);
+          detailModalMeta.innerHTML = metaEntries
+            .map((entry) => \`<span class="meta-pill">\${escapeText(String(entry))}</span>\`)
+            .join('');
+          detailModal.classList.remove('hidden');
+          detailModal.setAttribute('aria-hidden', 'false');
+        };
+
         const buildDerivedStages = (session) => {
           const createStatus = session ? 'completed' : 'pending';
           const graphStatus = !session
@@ -1274,7 +1464,24 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
 
         const renderEventOverview = (_session, workbenchModel) => {
           eventHeadline.textContent = workbenchModel.headline;
-          eventSummary.textContent = workbenchModel.summary;
+          eventSummary.textContent = workbenchModel.briefing;
+
+          if (overviewCard) {
+            overviewCard.setAttribute('data-detail-kicker', '事件总览');
+            overviewCard.setAttribute('data-detail-title', workbenchModel.headline);
+            overviewCard.setAttribute('data-detail-subtitle', '完整摘要');
+            overviewCard.setAttribute('data-detail-body', workbenchModel.fullSummary || workbenchModel.briefing);
+            overviewCard.setAttribute('data-detail-quote', '');
+            overviewCard.setAttribute(
+              'data-detail-meta',
+              JSON.stringify([
+                workbenchModel.eventTypeValue,
+                '重要性 ' + workbenchModel.importanceValue,
+                workbenchModel.sourceModeValue
+              ])
+            );
+          }
+
           eventMetrics.innerHTML = [
             createMetricTile(
               workbenchModel.eventTypeValue === '待识别' ? '事件类型' : '事件类型（初步归类）',
@@ -1302,11 +1509,22 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
 
           judgmentList.innerHTML = judgments
             .map((judgment) => \`
-              <article class="judgment-card">
+              <article
+                class="judgment-card card-detail-trigger"
+                data-detail-kicker="\${escapeText(judgment.kicker)}"
+                data-detail-title="\${escapeText(judgment.title)}"
+                data-detail-subtitle="关键判断详情"
+                data-detail-body="\${escapeText(judgment.body)}"
+                data-detail-quote="\${escapeText(judgment.evidenceQuote)}"
+                data-detail-meta="\${escapeText(JSON.stringify(judgment.meta))}"
+                tabindex="0"
+                role="button"
+              >
                 <div class="section-kicker">\${escapeText(judgment.kicker)}</div>
+                <div class="card-detail-hint">点击查看详情</div>
                 <h3>\${escapeText(judgment.title)}</h3>
-                <p>\${escapeText(judgment.body)}</p>
-                <div class="evidence-quote">\${escapeText(judgment.evidenceQuote)}</div>
+                <p>\${escapeText(judgment.previewBody)}</p>
+                <div class="evidence-quote">\${escapeText(judgment.previewQuote)}</div>
                 <div class="judgment-meta">
                   \${judgment.meta.map((entry) => \`<span class="meta-pill">\${escapeText(entry)}</span>\`).join('')}
                 </div>
@@ -1327,11 +1545,27 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
             <p class="source-note">\${escapeText(workbenchModel.evidenceSectionNote)}</p>
             \${judgments
             .map((judgment, index) => \`
-              <article class="evidence-card">
+              <article
+                class="evidence-card card-detail-trigger"
+                data-detail-kicker="证据摘录 \${index + 1}"
+                data-detail-title="\${escapeText(judgment.evidenceTitle)}"
+                data-detail-subtitle="\${escapeText(workbenchModel.sourceLabel)}"
+                data-detail-body="\${escapeText(judgment.evidenceRoleLine)}"
+                data-detail-quote="\${escapeText(judgment.evidenceQuote)}"
+                data-detail-meta="\${escapeText(JSON.stringify(
+                  [
+                    '来源：' + workbenchModel.sourceLabel,
+                    workbenchModel.importStatusLabel !== '未标记导入状态' ? workbenchModel.importStatusLabel : ''
+                  ].filter(Boolean)
+                ))}"
+                tabindex="0"
+                role="button"
+              >
                 <div class="section-kicker">摘录 \${index + 1}</div>
+                <div class="card-detail-hint">点击查看详情</div>
                 <h3>\${escapeText(judgment.evidenceTitle)}</h3>
-                <p>\${escapeText(judgment.body)}</p>
-                <div class="evidence-quote">\${escapeText(judgment.evidenceQuote)}</div>
+                <p>\${escapeText(judgment.previewBody)}</p>
+                <div class="evidence-quote">\${escapeText(judgment.previewQuote)}</div>
                 <p class="source-note">
                   \${escapeText(judgment.evidenceRoleLine)}
                   · 来源：\${escapeText(workbenchModel.sourceLabel)}
@@ -1349,11 +1583,14 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
             return;
           }
 
+          const displaySourceTitle = getDisplaySourceTitle(session);
+          const titleLabel = isGeneratedSourceTitle(session) ? 'title（自动生成）' : 'title';
+
           sourcePreview.innerHTML = \`
             <article class="evidence-item">
               <h3>\${escapeText(workbenchModel.sourceLabel)}</h3>
               <p class="source-note">\${escapeText(workbenchModel.sourceTypeLabel)} · \${escapeText(workbenchModel.importModeLabel)} · \${escapeText(workbenchModel.importStatusLabel)}</p>
-              \${session.source?.title ? renderCopyableField('title', session.source.title) : ''}
+              \${displaySourceTitle ? renderCopyableField(titleLabel, displaySourceTitle) : ''}
               \${workbenchModel.articleUrl ? renderCopyableField('articleUrl', workbenchModel.articleUrl, { explorerUrl: workbenchModel.articleUrl, explorerLabel: '原文' }) : ''}
               \${workbenchModel.cachedAt ? renderCopyableField('cachedAt', workbenchModel.cachedAt) : ''}
             </article>
@@ -1497,7 +1734,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           graphPreview.innerHTML = \`
             <div class="stage-label">辅助关系图</div>
             <div id="graph-canvas" class="graph-canvas" role="img" aria-label="Auxiliary relationship graph"></div>
-            <p class="muted">graphUrl: \${escapeText(session.graphUrl ?? 'n/a')} · derived 边仅用于展示连通性，最终判断以证据区为准。</p>
+            <p class="muted">滚轮缩放，拖动画布可查看细节。graphUrl: \${escapeText(session.graphUrl ?? 'n/a')} · derived 边仅用于展示连通性，最终判断以证据区为准。</p>
           \`;
 
           const graphCanvas = document.getElementById('graph-canvas');
@@ -1587,7 +1824,44 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           }
         };
 
+        const setLaunchControlsDisabled = (disabled) => {
+          startButton.disabled = disabled;
+          fillSampleButton.disabled = disabled;
+
+          for (const button of presetButtons) {
+            button.disabled = disabled;
+          }
+        };
+
+        const setInterruptedState = () => {
+          overallStatus.textContent = statusText('interrupted');
+          overallStatus.className = 'status-chip failed';
+          formMessage.textContent = '分析连接已中断，请重新开始分析。';
+          formMessage.className = 'error';
+          setLaunchControlsDisabled(false);
+
+          if (!state.lastSession) {
+            return;
+          }
+
+          const statuses = buildDerivedStages(state.lastSession);
+          stageGrid.innerHTML = stageOrder.map((key) => {
+            const baseStatus = statuses[key];
+            const displayStatus = baseStatus === 'completed' ? 'completed' : 'failed';
+
+            return \`
+              <article class="stage-card" data-status="\${displayStatus}">
+                <div class="stage-label">\${stageLabels[key]}</div>
+                <div class="stage-status">\${statusText(displayStatus)}</div>
+              </article>
+            \`;
+          }).join('');
+        };
+
         const updateView = (session) => {
+          state.lastSession = session;
+          setLaunchControlsDisabled(Boolean(session && (session.status === 'queued' || session.status === 'running')));
+
           if (session?.sessionId) {
             state.sessionId = session.sessionId;
             const importMode = session.source?.metadata?.importMode;
@@ -1644,10 +1918,15 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
 
             if (session) {
               updateView(session);
+              return;
             }
+
+            setInterruptedState();
+            stopPolling();
           } catch (error) {
             formMessage.textContent = error.message;
             formMessage.className = 'error';
+            setInterruptedState();
             stopPolling();
           }
         };
@@ -1662,8 +1941,9 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
         };
 
         const createSession = async (payload) => {
-          formMessage.textContent = '正在创建 live session...';
+          formMessage.textContent = '正在创建分析任务...';
           formMessage.className = 'muted';
+          setLaunchControlsDisabled(true);
 
           try {
             const responsePayload = await fetchJson('/demo/live/session', {
@@ -1677,18 +1957,25 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
 
             startPolling(responsePayload.sessionId);
           } catch (error) {
+            if (error?.status === 409 && error?.payload?.sessionId) {
+              formMessage.textContent = '已有运行中的分析任务，已切回当前 session。';
+              formMessage.className = 'muted';
+              startPolling(error.payload.sessionId);
+              return;
+            }
+
             const message = error?.payload?.sessionId
               ? error.message + ' sessionId=' + error.payload.sessionId
               : error.message;
             formMessage.textContent = message;
             formMessage.className = 'error';
+            setLaunchControlsDisabled(false);
           }
         };
 
         fillSampleButton.addEventListener('click', () => {
           inputModeInput.value = 'manual';
           applyInputMode('manual');
-          titleInput.value = sample.title ?? '';
           sourceTypeInput.value = sample.sourceType;
           textInput.value = sample.text;
           formMessage.textContent = '已填充示例文本。';
@@ -1702,7 +1989,6 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
                 articleUrl: articleUrlInput.value
               }
             : {
-                title: titleInput.value,
                 text: textInput.value,
                 sourceType: sourceTypeInput.value,
                 metadata: {
@@ -1729,12 +2015,69 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
             inputModeInput.value = 'manual';
             applyInputMode('manual');
             articleUrlInput.value = preset.articleUrl;
-            titleInput.value = preset.request.title ?? '';
             sourceTypeInput.value = preset.request.sourceType;
             textInput.value = preset.request.text;
             await createSession(preset.request);
           });
         }
+
+        if (detailModal) {
+          detailModal.addEventListener('click', (event) => {
+            if (event.target === detailModal || event.target === detailModalClose) {
+              closeDetailModal();
+            }
+          });
+        }
+
+        document.addEventListener('click', (event) => {
+          const target = event.target;
+          const trigger = target instanceof Element ? target.closest('.card-detail-trigger') : null;
+
+          if (!trigger) {
+            return;
+          }
+
+          if (target instanceof Element && target.closest('.preset-launch-button, .copy-button, a')) {
+            return;
+          }
+
+          openDetailModal({
+            kicker: trigger.getAttribute('data-detail-kicker'),
+            title: trigger.getAttribute('data-detail-title'),
+            subtitle: trigger.getAttribute('data-detail-subtitle'),
+            body: trigger.getAttribute('data-detail-body'),
+            quote: trigger.getAttribute('data-detail-quote'),
+            meta: trigger.getAttribute('data-detail-meta')
+          });
+        });
+
+        document.addEventListener('keydown', (event) => {
+          if (event.key === 'Escape') {
+            closeDetailModal();
+            return;
+          }
+
+          const target = event.target;
+          const trigger = target instanceof Element ? target.closest('.card-detail-trigger') : null;
+
+          if (target instanceof Element && target.closest('.preset-launch-button, .copy-button, a')) {
+            return;
+          }
+
+          if (!trigger || (event.key !== 'Enter' && event.key !== ' ')) {
+            return;
+          }
+
+          event.preventDefault();
+          openDetailModal({
+            kicker: trigger.getAttribute('data-detail-kicker'),
+            title: trigger.getAttribute('data-detail-title'),
+            subtitle: trigger.getAttribute('data-detail-subtitle'),
+            body: trigger.getAttribute('data-detail-body'),
+            quote: trigger.getAttribute('data-detail-quote'),
+            meta: trigger.getAttribute('data-detail-meta')
+          });
+        });
 
         const bootstrap = async () => {
           applyInputMode(inputModeInput.value);

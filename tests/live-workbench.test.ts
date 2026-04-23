@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
   buildJudgments,
   createLiveWorkbenchViewModel,
+  getDisplayHeadline,
+  getDisplaySourceTitle,
   getGraphPresentationMode,
   inferEventType,
   type LiveWorkbenchSessionLike
@@ -174,6 +176,62 @@ describe('live workbench view model', () => {
     expect(viewModel.entityStepStatus).toBe('completed');
     expect(viewModel.entities).toEqual([]);
     expect(judgments[1]?.title).toBe('暂未识别到稳定主体');
+  });
+
+  it('should derive a display title from the model summary when manual text omits title', () => {
+    const session = createSession({
+      source: {
+        sourceType: 'research',
+        text: 'Arc introduced gasless nanopayments for AI agents. Circle provides the settlement layer.',
+        metadata: {
+          importMode: 'manual'
+        }
+      },
+      preview: {
+        summary: 'Arc 为 AI 代理引入无 gas 小额支付，并接入 Circle 作为结算层。',
+        entities: [],
+        relations: []
+      }
+    });
+
+    expect(getDisplaySourceTitle(session)).toBe('Arc 为 AI 代理引入无 gas 小额支付，并接入 Circle 作为结算层');
+    expect(getDisplayHeadline(session)).toBe('事件判断已生成');
+    expect(
+      createLiveWorkbenchViewModel(session, {
+        panews: 'PANews',
+        wublock123: '吴说',
+        chaincatcher: 'ChainCatcher'
+      }).summary
+    ).toBe('正文分析已完成，可在下方查看关键判断与证据摘录。');
+  });
+
+  it('should compress long summaries into briefing while preserving full summary for details', () => {
+    const longSummary =
+      '某协议完成新一轮战略合作，并计划在亚太市场扩展支付网络。Arc 负责代理侧支付编排，Circle 提供结算层与稳定币流转能力。团队同时披露了多阶段落地计划、渠道推进安排以及后续产品发布时间表。';
+    const session = createSession({
+      preview: {
+        summary: longSummary,
+        entities: [
+          { name: 'Arc', type: 'organization' },
+          { name: 'Circle', type: 'organization' }
+        ],
+        relations: [{ source: 'Arc', relation: 'partners_with', target: 'Circle' }]
+      }
+    });
+
+    const viewModel = createLiveWorkbenchViewModel(session, {
+      panews: 'PANews',
+      wublock123: '吴说',
+      chaincatcher: 'ChainCatcher'
+    });
+
+    expect(viewModel.briefing.length).toBeLessThan(longSummary.length);
+    expect(viewModel.briefing).toContain('某协议完成新一轮战略合作');
+    expect(viewModel.fullSummary).toBe(longSummary);
+    expect(viewModel.judgments[0]?.previewBody.length).toBeLessThan(viewModel.judgments[0]?.body.length ?? 0);
+    expect(viewModel.judgments[0]?.previewQuote.length).toBeLessThanOrEqual(
+      viewModel.judgments[0]?.evidenceQuote.length ?? 0
+    );
   });
 
   it('should downgrade running gateway copy to batch replay language', () => {

@@ -126,7 +126,11 @@ describe('createGraphRouter', () => {
     expect(response.statusCode).toBe(200);
     expect(response.text).toContain('session-graph');
     expect(response.text).toContain('Arc partners with Circle on machine-pay flows.');
-    expect(response.text).toContain('<svg');
+    expect(response.text).toContain('graph-canvas');
+    expect(response.text).toContain('cdn.jsdelivr.net/npm/echarts@5');
+    expect(response.text).toContain('roam: true');
+    expect(response.text).toContain('滚轮缩放');
+    expect(response.text).toContain('拖动画布');
     expect(response.text).toContain('mock-agent-001');
     expect(response.text).toContain('0xb716431da93f68d44743c4348da003f1c86a69497fa20bc583f6e6c8e6fbbdd8');
     expect(response.text).toContain('copyField');
@@ -198,7 +202,7 @@ describe('createGraphRouter', () => {
     });
 
     expect(okResponse.statusCode).toBe(200);
-    expect(okResponse.text).toContain('Graph Nodes');
+    expect(okResponse.text).toContain('关系图');
     expect(okResponse.text).toContain('Legacy session');
     expect(okResponse.text).toContain('未记录导入来源');
     expect(okResponse.text).not.toContain('https://wublock123.com/p/654321');

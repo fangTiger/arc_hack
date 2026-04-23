@@ -35,6 +35,17 @@ type ArcReceiptWriterConfig = {
 
 type ReceiptWriterConfig = MockReceiptWriterConfig | ArcReceiptWriterConfig;
 
+const TRANSIENT_RECEIPT_RETRY_DELAYS_MS = [250, 750] as const;
+
+class ReceiptWriteAttemptError extends Error {
+  constructor(
+    readonly causeError: unknown,
+    readonly broadcasted: boolean
+  ) {
+    super(causeError instanceof Error ? causeError.message : 'Receipt write attempt failed.');
+  }
+}
+
 const usageReceiptAbi = [
   {
     type: 'function',
@@ -97,6 +108,17 @@ class ArcReceiptWriter implements ReceiptWriter {
     );
   }
 
+  private isRetryableSubmissionError(error: unknown): boolean {
+    if (!(error instanceof Error)) {
+      return false;
+    }
+
+    const message = error.message.toLowerCase();
+    return ['txpool is full', 'pool is full', 'temporarily unavailable', 'rate limit', 'too many requests'].some(
+      (pattern) => message.includes(pattern)
+    );
+  }
+
   private async withReservedNonce<T>(run: (nonce: number) => Promise<T>): Promise<T> {
     const previousReservation = this.nonceQueue;
     let releaseReservation: () => void = () => undefined;
@@ -123,6 +145,8 @@ class ArcReceiptWriter implements ReceiptWriter {
       this.nextNonce = reservedNonce + 1;
       return await run(reservedNonce);
     } catch (error) {
+      const attemptError =
+        error instanceof ReceiptWriteAttemptError ? error : new ReceiptWriteAttemptError(error, false);
       const refreshedPendingNonce = await this.publicClient
         .getTransactionCount({
           address: this.account.address,
@@ -130,38 +154,76 @@ class ArcReceiptWriter implements ReceiptWriter {
         })
         .catch(() => undefined);
 
-      if (this.isAmbiguousBroadcastError(error) && reservedNonce !== undefined) {
+      if (
+        this.isAmbiguousBroadcastError(attemptError.causeError) &&
+        attemptError.broadcasted &&
+        reservedNonce !== undefined
+      ) {
         this.nextNonce = Math.max(refreshedPendingNonce ?? reservedNonce + 1, reservedNonce + 1);
       } else {
         this.nextNonce = refreshedPendingNonce;
       }
 
-      throw error;
+      throw attemptError.causeError;
     } finally {
       releaseReservation();
     }
   }
 
   async write(input: ReceiptWriteInput): Promise<ReceiptWriteResult> {
-    try {
-      const txHash = await this.withReservedNonce((nonce) =>
-        this.walletClient.sendTransaction({
-          account: this.account,
-          chain: undefined,
-          nonce,
-          to: this.config.contractAddress as Address,
-          data: encodeFunctionData({
-            abi: usageReceiptAbi,
-            functionName: 'recordReceipt',
-            args: [input.requestId, input.operation, input.payloadHash as Hex]
-          })
-        })
-      );
+    let lastError: unknown;
 
-      return {
-        mode: 'arc',
-        txHash: txHash as `0x${string}`
-      };
+    try {
+      for (const retryDelayMs of [0, ...TRANSIENT_RECEIPT_RETRY_DELAYS_MS]) {
+        try {
+          if (retryDelayMs > 0) {
+            await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+          }
+
+          const txHash = await this.withReservedNonce(async (nonce) => {
+            let hash: Hex;
+
+            try {
+              hash = await this.walletClient.sendTransaction({
+                account: this.account,
+                chain: undefined,
+                nonce,
+                to: this.config.contractAddress as Address,
+                data: encodeFunctionData({
+                  abi: usageReceiptAbi,
+                  functionName: 'recordReceipt',
+                  args: [input.requestId, input.operation, input.payloadHash as Hex]
+                })
+              });
+            } catch (error) {
+              throw new ReceiptWriteAttemptError(error, this.isAmbiguousBroadcastError(error));
+            }
+
+            try {
+              await this.publicClient.waitForTransactionReceipt({
+                hash
+              });
+            } catch (error) {
+              throw new ReceiptWriteAttemptError(error, true);
+            }
+
+            return hash;
+          });
+
+          return {
+            mode: 'arc',
+            txHash: txHash as `0x${string}`
+          };
+        } catch (error) {
+          lastError = error;
+
+          if (!this.isRetryableSubmissionError(error) || retryDelayMs === TRANSIENT_RECEIPT_RETRY_DELAYS_MS.at(-1)) {
+            throw error;
+          }
+        }
+      }
+
+      throw lastError;
     } catch (error) {
       throw new Error(
         extractSafeErrorMessage(error, 'Arc receipt writer command failed.', {

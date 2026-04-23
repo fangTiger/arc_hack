@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, utimesSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -159,12 +159,21 @@ describe('createLiveRouter', () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(response.text).toContain('Live Agent Console');
     expect(response.text).toContain('可信投研工作台');
+    expect(response.text).not.toContain('Live Agent Console');
+    expect(response.text).not.toContain('比赛版');
     expect(response.text).toContain('文章链接');
     expect(response.text).toContain('手动文本');
+    expect(response.text).toContain('<option value="manual" selected>');
+    expect(response.text).toContain('系统会基于正文自动生成展示标题');
     expect(response.text).toContain('article-url-input');
+    expect(response.text).not.toContain('title-input');
+    expect(response.text).toContain('开始分析');
+    expect(response.text).not.toContain('开始演示');
     expect(response.text).toContain('preset-card');
+    expect(response.text).toContain('detail-modal');
+    expect(response.text).toContain('card-detail-trigger');
+    expect(response.text).toContain('点击查看完整摘要');
     expect(response.text).toContain('事件总览');
     expect(response.text).toContain('关键判断');
     expect(response.text).toContain('证据摘录');
@@ -176,10 +185,13 @@ describe('createLiveRouter', () => {
     expect(response.text).toContain('填充示例');
     expect(response.text).toContain('/demo/live/session');
     expect(response.text).toContain('/demo/live/session/active');
-    expect(response.text).toContain('graph-preview');
+    expect(response.text).toContain('graph-surface');
+    expect(response.text).toContain('position: static;');
+    expect(response.text).toContain('order: 2;');
     expect(response.text).toContain('copyField');
     expect(response.text).toContain('cdn.jsdelivr.net/npm/echarts@5');
     expect(response.text).toContain('https://testnet.arcscan.app');
+    expect(response.text).toContain('分析连接已中断，请重新开始分析。');
     expect(response.text).not.toContain('把 agent 运行过程直接录进同一块屏幕');
   });
 
@@ -252,8 +264,40 @@ describe('createLiveRouter', () => {
     expect((latestResponse.json as LiveAgentSession).sessionId).toBe(sessionId);
     expect(activeResponse.statusCode).toBe(404);
     expect(detailResponse.statusCode).toBe(200);
-    expect((detailResponse.json as LiveAgentSession).agentSession?.graph.nodes).toHaveLength(2);
+    expect((detailResponse.json as LiveAgentSession).agentSession?.graph.nodes.length).toBeGreaterThanOrEqual(4);
     expect(missingResponse.statusCode).toBe(404);
+  });
+
+  it('should accept manual text without a title and persist an empty source title', async () => {
+    const { app, liveSessionStore } = createTestHarness({
+      runAgentGraphSession: async ({ sessionId, source }) => ({
+        sessionId,
+        artifactPath: join(tmpdir(), `${sessionId}.json`),
+        graphUrl: `http://127.0.0.1:3000/demo/graph/${sessionId}`,
+        session: createCompletedAgentSession(sessionId, source!)
+      })
+    });
+
+    const createResponse = await invokeApp(app, {
+      method: 'POST',
+      path: '/demo/live/session',
+      body: {
+        text: 'Arc introduced gasless nanopayments for AI agents. Circle provides the settlement layer.',
+        sourceType: 'research',
+        metadata: {
+          importMode: 'manual'
+        }
+      }
+    });
+
+    expect(createResponse.statusCode).toBe(202);
+
+    const { sessionId } = createResponse.json as { sessionId: string };
+    const session = await waitForSession(liveSessionStore, sessionId);
+
+    expect(session?.source.title).toBeUndefined();
+    expect(session?.source.text).toContain('Arc introduced gasless nanopayments');
+    expect(session?.source.metadata?.importMode).toBe('manual');
   });
 
   it('should import a whitelisted articleUrl, then preserve metadata in live payloads and agent session output', async () => {
@@ -687,7 +731,11 @@ describe('createLiveRouter', () => {
       const { sessionId } = createResponse.json as { sessionId: string };
       await waitForSession(liveSessionStore, sessionId, 'failed');
 
-      const logs = logSpy.mock.calls.map((call) => call.join(' ')).join('\n');
+      let logs = '';
+      await vi.waitFor(() => {
+        logs = logSpy.mock.calls.map((call) => call.join(' ')).join('\n');
+        expect(logs).toContain('[REDACTED]');
+      });
 
       expect(logs).toContain('[REDACTED]');
       expect(logs).not.toContain(leakedPrivateKey);
@@ -839,5 +887,72 @@ describe('createLiveRouter', () => {
     releaseRunner?.();
 
     await waitForSession(liveSessionStore, sessionId);
+  });
+
+  it('should fail a stale active session and allow a fresh demo to start', async () => {
+    const { app, liveSessionStore } = createTestHarness({
+      runAgentGraphSession: async ({ sessionId, source }) => ({
+        sessionId,
+        artifactPath: join(tmpdir(), `${sessionId}.json`),
+        graphUrl: `http://127.0.0.1:3000/demo/graph/${sessionId}`,
+        session: createCompletedAgentSession(sessionId, source!)
+      })
+    });
+
+    const staleSession: LiveAgentSession = {
+      sessionId: 'live-stale-001',
+      mode: 'mock',
+      status: 'running',
+      createdAt: '2026-04-22T10:00:00.000Z',
+      updatedAt: '2026-04-22T10:00:01.000Z',
+      source: {
+        sourceType: 'news',
+        text: 'Arc introduced gasless nanopayments for AI agents. Circle provides the settlement layer.'
+      },
+      steps: [
+        { key: 'summary', status: 'running', startedAt: '2026-04-22T10:00:01.000Z' },
+        { key: 'entities', status: 'pending' },
+        { key: 'relations', status: 'pending' }
+      ],
+      preview: {
+        summary: 'Arc partners with Circle on machine-pay flows.'
+      }
+    };
+
+    await liveSessionStore.writeSession(staleSession);
+    const staleAt = new Date(Date.now() - 60_000);
+    utimesSync(liveSessionStore.getSessionPath(staleSession.sessionId), staleAt, staleAt);
+
+    const activeResponse = await invokeApp(app, {
+      method: 'GET',
+      path: '/demo/live/session/active'
+    });
+    const detailResponse = await invokeApp(app, {
+      method: 'GET',
+      path: `/demo/live/session/${staleSession.sessionId}`
+    });
+    const createResponse = await invokeApp(app, {
+      method: 'POST',
+      path: '/demo/live/session',
+      body: {
+        text: 'Circle provides the settlement layer for Arc machine payments.',
+        sourceType: 'news',
+        metadata: {
+          importMode: 'manual'
+        }
+      }
+    });
+    const { sessionId } = createResponse.json as { sessionId: string };
+    const createdSession = await waitForSession(liveSessionStore, sessionId);
+
+    expect(activeResponse.statusCode).toBe(404);
+    expect(detailResponse.statusCode).toBe(200);
+    expect(detailResponse.json).toMatchObject({
+      sessionId: staleSession.sessionId,
+      status: 'failed',
+      error: expect.stringContaining('心跳已丢失')
+    });
+    expect(createResponse.statusCode).toBe(202);
+    expect(createdSession.status).toBe('completed');
   });
 });

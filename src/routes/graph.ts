@@ -177,21 +177,52 @@ const renderSourceMetadata = (session: AgentSession): string => {
 };
 
 const renderGraphPage = (session: AgentSession, runtimeEnv: RuntimeEnv): string => {
+  const graphNodes = JSON.stringify(
+    session.graph.nodes.map((node) => ({
+      id: node.id,
+      name: node.label,
+      value: node.type,
+      x: node.x,
+      y: node.y,
+      symbolSize: 52,
+      itemStyle: {
+        color: node.color
+      }
+    }))
+  );
+  const graphLinks = JSON.stringify(
+    session.graph.edges.map((edge) => ({
+      source: edge.source,
+      target: edge.target,
+      value: edge.label,
+      lineStyle: {
+        type: edge.provenance === 'derived' ? 'dashed' : 'solid',
+        opacity: edge.provenance === 'derived' ? 0.64 : 0.88
+      }
+    }))
+  );
+  const relationList = session.relations.length > 0
+    ? session.relations
+        .map((relation) => `<li>${escapeHtml(relation.source)} ${escapeHtml(relation.relation)} ${escapeHtml(relation.target)}</li>`)
+        .join('')
+    : '<li>当前关系较弱，建议回到工作台结合原文与凭证继续复核。</li>';
+
   return `<!DOCTYPE html>
-  <html lang="en">
+  <html lang="zh-CN">
     <head>
       <meta charset="utf-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1" />
-      <title>Agent Graph ${escapeHtml(session.sessionId)}</title>
+      <title>知识图谱 ${escapeHtml(session.sessionId)}</title>
       <style>
         :root {
           color-scheme: light;
           --bg: #f1f5f9;
-          --panel: rgba(255, 255, 255, 0.92);
+          --panel: rgba(255, 255, 255, 0.94);
           --border: rgba(15, 23, 42, 0.12);
           --text: #0f172a;
           --muted: #475569;
           --accent: #0f766e;
+          --gold: #b45309;
         }
 
         * { box-sizing: border-box; }
@@ -205,9 +236,9 @@ const renderGraphPage = (session: AgentSession, runtimeEnv: RuntimeEnv): string 
         }
 
         main {
-          max-width: 1120px;
+          max-width: 1480px;
           margin: 0 auto;
-          padding: 32px 20px 56px;
+          padding: 24px 20px 56px;
         }
 
         .hero, .panel {
@@ -218,7 +249,7 @@ const renderGraphPage = (session: AgentSession, runtimeEnv: RuntimeEnv): string 
         }
 
         .hero {
-          padding: 28px;
+          padding: 24px;
           margin-bottom: 20px;
         }
 
@@ -231,9 +262,9 @@ const renderGraphPage = (session: AgentSession, runtimeEnv: RuntimeEnv): string 
 
         .summary {
           color: var(--muted);
-          font-size: 18px;
-          line-height: 1.65;
-          max-width: 65ch;
+          font-size: 17px;
+          line-height: 1.7;
+          max-width: 75ch;
         }
 
         .meta {
@@ -253,6 +284,74 @@ const renderGraphPage = (session: AgentSession, runtimeEnv: RuntimeEnv): string 
         .source-card {
           display: grid;
           gap: 10px;
+        }
+
+        .layout {
+          display: grid;
+          grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.82fr);
+          gap: 20px;
+          align-items: start;
+        }
+
+        .panel {
+          padding: 24px;
+        }
+
+        .graph-header,
+        .side-stack {
+          display: grid;
+          gap: 12px;
+        }
+
+        .graph-header h2,
+        .side-stack h2,
+        .run-card h3,
+        h1 {
+          margin: 0;
+        }
+
+        .graph-surface {
+          border-radius: 24px;
+          border: 1px solid rgba(148, 163, 184, 0.2);
+          background:
+            radial-gradient(circle at top left, rgba(15, 118, 110, 0.08), transparent 12rem),
+            rgba(255, 255, 255, 0.9);
+          min-height: 560px;
+          padding: 18px;
+        }
+
+        .graph-canvas {
+          width: 100%;
+          min-height: 520px;
+        }
+
+        .hint-row {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px;
+        }
+
+        .hint-pill {
+          display: inline-flex;
+          align-items: center;
+          padding: 7px 12px;
+          border-radius: 999px;
+          background: rgba(15, 118, 110, 0.1);
+          color: var(--accent);
+          font-size: 13px;
+        }
+
+        .relation-list {
+          margin: 0;
+          padding-left: 18px;
+          color: var(--muted);
+          line-height: 1.7;
+        }
+
+        .run-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+          gap: 14px;
         }
 
         .evidence-field {
@@ -284,16 +383,7 @@ const renderGraphPage = (session: AgentSession, runtimeEnv: RuntimeEnv): string 
           white-space: nowrap;
         }
 
-        .copy-button {
-          padding: 8px 12px;
-          border-radius: 999px;
-          border: 1px solid rgba(15, 118, 110, 0.22);
-          background: rgba(15, 118, 110, 0.1);
-          color: var(--accent);
-          font-size: 13px;
-          cursor: pointer;
-        }
-
+        .copy-button,
         .explorer-link {
           display: inline-flex;
           align-items: center;
@@ -301,9 +391,10 @@ const renderGraphPage = (session: AgentSession, runtimeEnv: RuntimeEnv): string 
           padding: 8px 12px;
           border-radius: 999px;
           border: 1px solid rgba(15, 118, 110, 0.22);
-          background: rgba(15, 118, 110, 0.08);
+          background: rgba(15, 118, 110, 0.1);
           color: var(--accent);
           font-size: 13px;
+          cursor: pointer;
           text-decoration: none;
         }
 
@@ -312,30 +403,17 @@ const renderGraphPage = (session: AgentSession, runtimeEnv: RuntimeEnv): string 
           cursor: default;
         }
 
-        .layout {
-          display: grid;
-          grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
-          gap: 20px;
-        }
-
-        .panel {
-          padding: 24px;
-        }
-
-        .run-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-          gap: 14px;
-        }
-
-        h1, h2, h3 { margin-top: 0; }
-        ul { padding-left: 18px; color: var(--muted); }
-        p { margin: 6px 0; }
-        svg { width: 100%; height: auto; display: block; }
-
-        @media (max-width: 840px) {
+        @media (max-width: 980px) {
           .layout {
             grid-template-columns: 1fr;
+          }
+
+          .graph-surface {
+            min-height: 420px;
+          }
+
+          .graph-canvas {
+            min-height: 380px;
           }
         }
       </style>
@@ -343,22 +421,22 @@ const renderGraphPage = (session: AgentSession, runtimeEnv: RuntimeEnv): string 
     <body>
       <main>
         <section class="hero">
-          <div class="eyebrow">Agent Graph Session</div>
-          <h1>${escapeHtml(session.source.title ?? 'Untitled Source')}</h1>
+          <div class="eyebrow">知识图谱</div>
+          <h1>${escapeHtml(session.source.title ?? '未命名来源')}</h1>
           <p><strong>sessionId</strong>: ${escapeHtml(session.sessionId)}</p>
           <p class="summary">${escapeHtml(session.summary)}</p>
           <div class="meta">
             <div class="meta-card">
-              <strong>Total Price</strong>
+              <strong>总成本</strong>
               <p>${escapeHtml(session.totals.totalPrice)}</p>
             </div>
             <div class="meta-card">
-              <strong>Successful Runs</strong>
+              <strong>成功调用</strong>
               <p>${session.totals.successfulRuns}</p>
             </div>
             <div class="meta-card">
-              <strong>Source Type</strong>
-              <p>${escapeHtml(session.source.sourceType)}</p>
+              <strong>来源类型</strong>
+              <p>${escapeHtml(session.source.sourceType === 'news' ? '新闻 / 资讯' : session.source.sourceType)}</p>
             </div>
             ${renderSourceMetadata(session)}
           </div>
@@ -366,35 +444,51 @@ const renderGraphPage = (session: AgentSession, runtimeEnv: RuntimeEnv): string 
 
         <section class="layout">
           <article class="panel">
-            <h2>Graph Nodes</h2>
-            <p class="summary">original 来自真实抽取关系，derived 仅用于展示连通性，不代表真实抽取关系。</p>
-            ${renderGraphSvg(session)}
+            <div class="graph-header">
+              <div class="eyebrow">关系图</div>
+              <h2>实体与关系浏览</h2>
+              <p class="summary">使用 ECharts 渲染，支持滚轮缩放与拖动画布。original 来自抽取结果，derived 仅用于展示连通性。</p>
+              <div class="hint-row">
+                <span class="hint-pill">滚轮缩放</span>
+                <span class="hint-pill">拖动画布</span>
+                <span class="hint-pill">derived 仅用于展示连通性</span>
+              </div>
+            </div>
+            <div class="graph-surface">
+              <div id="graph-canvas" class="graph-canvas" role="img" aria-label="knowledge graph"></div>
+            </div>
           </article>
 
           <article class="panel">
-            <h2>导入来源</h2>
-            <p class="summary">${session.source.metadata
-              ? escapeHtml(`导入方式：${formatImportMode(session.source.metadata.importMode ?? 'unknown')}`)
-              : '未记录导入来源。'}</p>
-            <h2>Relations</h2>
-            <ul>
-              ${session.relations
-                .map((relation) => `<li>${escapeHtml(relation.source)} ${escapeHtml(relation.relation)} ${escapeHtml(relation.target)}</li>`)
-                .join('')}
-            </ul>
-            <h2>Source Text</h2>
-            <p class="summary">${escapeHtml(session.source.text)}</p>
+            <div class="side-stack">
+              <div>
+                <div class="eyebrow">图谱说明</div>
+                <h2>关系清单</h2>
+                <ul class="relation-list">
+                  ${relationList}
+                </ul>
+              </div>
+              <div>
+                <div class="eyebrow">原文</div>
+                <h2>Source Text</h2>
+                <p class="summary">${escapeHtml(session.source.text)}</p>
+              </div>
+            </div>
           </article>
         </section>
 
         <section class="panel" style="margin-top: 20px;">
-          <h2>Payment Evidence</h2>
+          <h2>分析凭证</h2>
           <div class="run-grid">
             ${renderRunCards(session, runtimeEnv)}
           </div>
         </section>
 
+        <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
         <script>
+          const graphNodes = ${graphNodes};
+          const graphLinks = ${graphLinks};
+
           const copyField = async (button) => {
             const value = button?.dataset?.copyValue;
 
@@ -435,7 +529,60 @@ const renderGraphPage = (session: AgentSession, runtimeEnv: RuntimeEnv): string 
             }
           };
 
+          const graphCanvas = document.getElementById('graph-canvas');
+          let chart = null;
+
+          const renderGraph = () => {
+            if (!graphCanvas || !window.echarts || graphNodes.length === 0) {
+              return;
+            }
+
+            chart = window.echarts.init(graphCanvas, null, { renderer: 'svg' });
+            chart.setOption({
+              animationDuration: 420,
+              tooltip: {
+                trigger: 'item'
+              },
+              series: [
+                {
+                  type: 'graph',
+                  layout: 'none',
+                  roam: true,
+                  label: {
+                    show: true,
+                    position: 'bottom',
+                    color: '#0f172a',
+                    fontSize: 12
+                  },
+                  edgeLabel: {
+                    show: true,
+                    formatter: ({ data }) => data.value,
+                    color: '#334155',
+                    fontSize: 11
+                  },
+                  lineStyle: {
+                    color: '#94a3b8',
+                    width: 2,
+                    curveness: 0.08
+                  },
+                  emphasis: {
+                    focus: 'adjacency'
+                  },
+                  data: graphNodes,
+                  links: graphLinks
+                }
+              ]
+            });
+          };
+
+          window.addEventListener('resize', () => {
+            if (chart) {
+              chart.resize();
+            }
+          });
+
           window.copyField = copyField;
+          renderGraph();
         </script>
       </main>
     </body>

@@ -10,3 +10,7 @@
 - [x] 2.2 调整 live 首页恢复逻辑，只自动恢复运行中的 active session，不默认回显上一次 completed/failed 结果。Executor: Outer Codex
 - [x] 2.3 将 `entities / relations` 收敛到共享的结构化分析结果，提升主体与关系的一致性和稳定性。Executor: Outer Codex
 - [x] 2.4 将辅助关系图切换为 ECharts 渲染，并在弱数据场景下稳定降级为清单视图。Executor: Outer Codex
+- [x] 2.5 允许手动正文输入时省略标题，并在 summary 返回后自动生成展示标题。Executor: Outer Codex
+- [ ] 2.6 将 live 首页进一步收紧为结果优先布局，移除“开始演示 / 比赛版 / Live Agent Console”等 demo 叙事。Executor: Outer Codex
+- [ ] 2.7 为关键判断、证据摘录和预置资讯卡片补充详情弹窗，减少页面纵向展开长度。Executor: Outer Codex
+- [ ] 2.8 提升结构化分析的实体/关系密度，并将独立 graph 页面升级为可缩放的 ECharts 视图。Executor: Outer Codex

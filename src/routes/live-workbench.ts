@@ -63,8 +63,10 @@ export type LiveWorkbenchJudgment = {
   kicker: string;
   title: string;
   body: string;
+  previewBody: string;
   evidenceTitle: string;
   evidenceQuote: string;
+  previewQuote: string;
   evidenceRoleLine: string;
   meta: string[];
 };
@@ -72,6 +74,8 @@ export type LiveWorkbenchJudgment = {
 export type LiveWorkbenchViewModel = {
   headline: string;
   summary: string;
+  briefing: string;
+  fullSummary: string;
   eventTypeValue: string;
   importanceValue: string;
   sourceModeValue: string;
@@ -187,13 +191,37 @@ export function getDisplayHeadline(session: LiveWorkbenchSessionLike | null | un
     return sourceTitle;
   }
 
-  const summary = getSummary(session).trim();
-
-  if (summary) {
-    return summary;
+  if (getStepStatus(session, 'summary') === 'completed' && getSummary(session).trim()) {
+    return '事件判断已生成';
   }
 
   return extractSentences(session.source?.text ?? '')[0] ?? '等待事件判断生成';
+}
+
+export function getDisplaySourceTitle(session: LiveWorkbenchSessionLike | null | undefined): string | undefined {
+  const sourceTitle = session?.source?.title?.trim();
+
+  if (sourceTitle) {
+    return sourceTitle;
+  }
+
+  const summarySentence = extractSentences(getSummary(session))[0]?.trim();
+
+  if (!summarySentence) {
+    return undefined;
+  }
+
+  const normalized = summarySentence.replace(/[。！？!?]+$/u, '').trim();
+
+  if (!normalized) {
+    return undefined;
+  }
+
+  return normalized.length > 48 ? `${normalized.slice(0, 47).trimEnd()}…` : normalized;
+}
+
+export function isGeneratedSourceTitle(session: LiveWorkbenchSessionLike | null | undefined): boolean {
+  return !session?.source?.title?.trim() && Boolean(getDisplaySourceTitle(session));
 }
 
 export function inferEventType(session: LiveWorkbenchSessionLike | null | undefined): string {
@@ -278,6 +306,16 @@ export function getTotalPrice(session: LiveWorkbenchSessionLike | null | undefin
   return `$${total.toFixed(3)}`;
 }
 
+const buildPreviewText = (value: string, limit = 92): string => {
+  const normalized = String(value ?? '').replace(/\s+/g, ' ').trim();
+
+  if (!normalized) {
+    return '';
+  }
+
+  return normalized.length > limit ? `${normalized.slice(0, limit - 1).trimEnd()}…` : normalized;
+};
+
 export function buildJudgments(session: LiveWorkbenchSessionLike | null | undefined): LiveWorkbenchJudgment[] {
   if (!session || getStepStatus(session, 'summary') !== 'completed') {
     return [];
@@ -295,8 +333,10 @@ export function buildJudgments(session: LiveWorkbenchSessionLike | null | undefi
       kicker: '事件判断',
       title: `初步归类为${eventType}`,
       body: summary || '事件摘要已返回，但仍建议结合原文与凭证继续人工复核。',
+      previewBody: buildPreviewText(summary || '事件摘要已返回，但仍建议结合原文与凭证继续人工复核。'),
       evidenceTitle: '相关原文片段',
       evidenceQuote: sentences[0] ?? summary ?? '等待原文片段到位。',
+      previewQuote: buildPreviewText(sentences[0] ?? summary ?? '等待原文片段到位。'),
       evidenceRoleLine: '参考用途：辅助人工复核事件判断，暂未做逐句证据对齐。',
       meta: [`${eventType}（初步归类）`, `重要性 ${importance}`]
     }
@@ -311,8 +351,14 @@ export function buildJudgments(session: LiveWorkbenchSessionLike | null | undefi
         entityNames.length > 0
           ? `已识别 ${entities.length} 个主体，适合先确认它们在原文里的角色，再决定是否继续跟进。`
           : '实体抽取已完成，但仍建议结合原文上下文确认主体角色。',
+      previewBody: buildPreviewText(
+        entityNames.length > 0
+          ? `已识别 ${entities.length} 个主体，适合先确认它们在原文里的角色，再决定是否继续跟进。`
+          : '实体抽取已完成，但仍建议结合原文上下文确认主体角色。'
+      ),
       evidenceTitle: '相关原文片段',
       evidenceQuote: sentences[1] ?? sentences[0] ?? summary ?? '等待主体相关片段到位。',
+      previewQuote: buildPreviewText(sentences[1] ?? sentences[0] ?? summary ?? '等待主体相关片段到位。'),
       evidenceRoleLine: '参考用途：辅助人工复核核心主体，暂未做逐句证据对齐。',
       meta: [
         entities.length > 0 ? `${entities.length} 个主体` : '主体待确认',
@@ -329,10 +375,18 @@ export function buildJudgments(session: LiveWorkbenchSessionLike | null | undefi
       body: firstRelation
         ? `${firstRelation.source} ${firstRelation.relation} ${firstRelation.target}。辅助关系图适合快速扫清连接，但最终判断仍应以原文与凭证为准。`
         : metadata.importStatus === 'cache'
-          ? '当前结果来自缓存回退，适合比赛场景稳定展示，但建议保留人工复核原文语境。'
+          ? '当前结果来自缓存回退，可稳定复看，但建议保留人工复核原文语境。'
           : '关系整理已完成，可以结合分析凭证与原文继续判断这条线索是否值得跟进。',
+      previewBody: buildPreviewText(
+        firstRelation
+          ? `${firstRelation.source} ${firstRelation.relation} ${firstRelation.target}。辅助关系图适合快速扫清连接，但最终判断仍应以原文与凭证为准。`
+          : metadata.importStatus === 'cache'
+            ? '当前结果来自缓存回退，可稳定复看，但建议保留人工复核原文语境。'
+            : '关系整理已完成，可以结合分析凭证与原文继续判断这条线索是否值得跟进。'
+      ),
       evidenceTitle: '相关原文片段',
       evidenceQuote: sentences[2] ?? sentences[1] ?? sentences[0] ?? summary ?? '等待更多原文片段到位。',
+      previewQuote: buildPreviewText(sentences[2] ?? sentences[1] ?? sentences[0] ?? summary ?? '等待更多原文片段到位。'),
       evidenceRoleLine: '参考用途：辅助人工复核主体关系，暂未做逐句证据对齐。',
       meta: [
         formatImportModeLabel(metadata.importMode),
@@ -358,10 +412,35 @@ export function createLiveWorkbenchViewModel(
   const eventTypeValue = summaryReady ? `${inferEventType(session)}（初步归类）` : '待识别';
   const importanceValue = summaryReady ? inferImportance(session) : '待判断';
   const sourceModeValue = metadata.sourceSite ? `${sourceLabel} · ${importModeLabel}` : importModeLabel;
-  const summary = summaryReady
-    ? getSummary(session) || '事件摘要已返回，建议继续结合原文语境复核。'
+  const rawSummary = getSummary(session).trim();
+  const summarySentences = extractSentences(rawSummary);
+  const fullSummary = summaryReady ? rawSummary || '事件摘要已返回，建议继续结合原文语境复核。' : '';
+  const briefing = summaryReady
+    ? (() => {
+        const compactSummary = summarySentences.slice(0, 2).join(' ').trim() || fullSummary;
+
+        if (!compactSummary) {
+          return '事件摘要已返回，建议继续结合原文语境复核。';
+        }
+
+        return compactSummary.length > 140 ? `${compactSummary.slice(0, 139).trimEnd()}…` : compactSummary;
+      })()
     : session?.status === 'queued'
-      ? 'live session 已创建，正在等待第一条事件判断返回。'
+      ? '分析任务已创建，正在等待第一条事件判断返回。'
+      : session?.status === 'running'
+        ? session.mode === 'gateway'
+          ? '批量支付与结果处理进行中，工作台会在响应返回后按阶段回放结果。'
+          : '事件判断正在生成，主区会按完成顺序逐块填充。'
+        : session?.status === 'failed'
+          ? '本次分析未完成，建议回看导入来源与分析凭证定位问题。'
+          : '选择一条资讯后，系统会先生成事件判断，再补全主体、证据和分析凭证。';
+  const hasSourceTitle = Boolean(session?.source?.title?.trim());
+  const summary = summaryReady
+    ? hasSourceTitle
+      ? briefing
+      : '正文分析已完成，可在下方查看关键判断与证据摘录。'
+    : session?.status === 'queued'
+      ? '分析任务已创建，正在等待第一条事件判断返回。'
       : session?.status === 'running'
         ? session.mode === 'gateway'
           ? '批量支付与结果处理进行中，工作台会在响应返回后按阶段回放结果。'
@@ -373,6 +452,8 @@ export function createLiveWorkbenchViewModel(
   return {
     headline: getDisplayHeadline(session),
     summary,
+    briefing,
+    fullSummary,
     eventTypeValue,
     importanceValue,
     sourceModeValue,

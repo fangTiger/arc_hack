@@ -231,6 +231,83 @@ describe('RealKnowledgeExtractionProvider', () => {
     expect(fetchImplementation).toHaveBeenCalledTimes(1);
   });
 
+  it('should keep richer entity and relation sets for strong texts and ask the model for denser structured analysis', async () => {
+    const fetchImplementation = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                entities: [
+                  { name: 'Arc', type: 'organization' },
+                  { name: 'Circle', type: 'organization' },
+                  { name: 'USDC', type: 'topic' },
+                  { name: 'AI agents', type: 'topic' },
+                  { name: 'Settlement layer', type: 'topic' },
+                  { name: 'Gasless payments', type: 'topic' },
+                  { name: 'Gateway buyer', type: 'topic' },
+                  { name: 'Machine-pay flows', type: 'topic' },
+                  { name: 'Asia market', type: 'topic' }
+                ],
+                relations: [
+                  { source: 'Arc', relation: 'partners_with', target: 'Circle' },
+                  { source: 'Circle', relation: 'settles', target: 'USDC' },
+                  { source: 'Arc', relation: 'serves', target: 'AI agents' },
+                  { source: 'Arc', relation: 'supports', target: 'Gasless payments' },
+                  { source: 'Circle', relation: 'powers', target: 'Settlement layer' },
+                  { source: 'Gateway buyer', relation: 'connects_to', target: 'Arc' },
+                  { source: 'Gateway buyer', relation: 'uses', target: 'USDC' },
+                  { source: 'Machine-pay flows', relation: 'targets', target: 'AI agents' },
+                  { source: 'Machine-pay flows', relation: 'settles_with', target: 'Settlement layer' },
+                  { source: 'Gateway buyer', relation: 'routes', target: 'Machine-pay flows' },
+                  { source: 'Circle', relation: 'supports', target: 'Machine-pay flows' }
+                ]
+              })
+            }
+          }
+        ]
+      })
+    });
+    const provider = new RealKnowledgeExtractionProvider({
+      baseUrl: 'https://api.openai.com/v1',
+      model: 'gpt-5.4',
+      fetchImplementation: fetchImplementation as unknown as typeof fetch
+    });
+
+    const entitiesResult = await provider.extract('entities', strongEntityRequest);
+    const relationsResult = await provider.extract('relations', strongEntityRequest);
+    const requestBody = JSON.parse(String(fetchImplementation.mock.calls[0]?.[1]?.body ?? '{}')) as {
+      messages?: Array<{ content?: string }>;
+    };
+    const systemInstruction = requestBody.messages?.[0]?.content ?? '';
+
+    expect(entitiesResult.kind).toBe('entities');
+    if (entitiesResult.kind !== 'entities') {
+      throw new Error('Expected entities result.');
+    }
+    expect(entitiesResult.entities).toHaveLength(8);
+    expect(entitiesResult.entities.map((entity) => entity.name)).toEqual([
+      'Arc',
+      'Circle',
+      'USDC',
+      'AI agents',
+      'Settlement layer',
+      'Gasless payments',
+      'Gateway buyer',
+      'Machine-pay flows'
+    ]);
+
+    expect(relationsResult.kind).toBe('relations');
+    if (relationsResult.kind !== 'relations') {
+      throw new Error('Expected relations result.');
+    }
+    expect(relationsResult.relations).toHaveLength(10);
+    expect(systemInstruction).toContain('entities 最多 8 个');
+    expect(systemInstruction).toContain('relations 最多 10 条');
+  });
+
   it('should evict a failed structured analysis cache entry so later retries can recover', async () => {
     const fetchImplementation = vi
       .fn()

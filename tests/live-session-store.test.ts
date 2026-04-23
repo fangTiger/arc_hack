@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -105,6 +105,42 @@ describe('FileLiveAgentSessionStore', () => {
     writeFileSync(store.getSessionPath(queuedSession.sessionId), JSON.stringify(completedSession, null, 2), 'utf8');
 
     await expect(store.readActiveSession()).resolves.toBeNull();
+    expect(() => readFileSync(store.getActivePath(), 'utf8')).toThrow();
+  });
+
+  it('should mark a stale active session as failed and clear the active pointer', async () => {
+    const workingDirectory = mkdtempSync(join(tmpdir(), 'arc-hack-live-session-heartbeat-timeout-'));
+    temporaryDirectories.push(workingDirectory);
+    const store = new FileLiveAgentSessionStore(join(workingDirectory, 'artifacts', 'live-console'));
+    const session = createSession({
+      status: 'running',
+      steps: [
+        { key: 'summary', status: 'running', startedAt: '2026-04-22T10:00:01.000Z' },
+        { key: 'entities', status: 'pending' },
+        { key: 'relations', status: 'pending' }
+      ]
+    });
+
+    await store.writeSession(session);
+    const staleAt = new Date(Date.now() - 60_000);
+    utimesSync(store.getSessionPath(session.sessionId), staleAt, staleAt);
+
+    const normalizedSession = await store.readSession(session.sessionId);
+
+    expect(normalizedSession).toMatchObject({
+      sessionId: session.sessionId,
+      status: 'failed',
+      error: expect.stringContaining('心跳已丢失')
+    });
+    expect(normalizedSession?.steps.find((step) => step.key === 'summary')).toMatchObject({
+      status: 'failed',
+      error: expect.stringContaining('心跳已丢失')
+    });
+    await expect(store.readActiveSession()).resolves.toBeNull();
+    await expect(store.readLatestSession()).resolves.toMatchObject({
+      sessionId: session.sessionId,
+      status: 'failed'
+    });
     expect(() => readFileSync(store.getActivePath(), 'utf8')).toThrow();
   });
 });

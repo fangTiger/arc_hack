@@ -6,6 +6,7 @@ import { buildAgentGraph, type AgentSession, type AgentSessionRun } from './agen
 import { demoCorpus } from './corpus.js';
 import type {
   EntityExtractionResult,
+  ExtractionEntity,
   ExtractionOperation,
   ExtractionRelation,
   ExtractionRequest,
@@ -124,6 +125,137 @@ const emitProgress = async (
   event: AgentGraphRunnerProgressEvent
 ): Promise<void> => {
   await handler?.(event);
+};
+
+const normalizeGraphCandidateLabel = (value: string): string =>
+  value
+    .replace(/^[\s"'“”‘’]+|[\s"'“”‘’.,;:!?]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const buildGraphInputs = (
+  source: ExtractionRequest,
+  summary: string,
+  entities: ExtractionEntity[],
+  relations: ExtractionRelation[]
+): {
+  entities: ExtractionEntity[];
+  relations: ExtractionRelation[];
+} => {
+  const entityMap = new Map<string, ExtractionEntity['type']>();
+  const relationMap = new Map<string, ExtractionRelation>();
+
+  const upsertEntity = (name: string, type: ExtractionEntity['type'] = 'topic') => {
+    const normalizedName = normalizeGraphCandidateLabel(name);
+
+    if (!normalizedName) {
+      return;
+    }
+
+    const existing = entityMap.get(normalizedName);
+
+    if (!existing || (existing === 'topic' && type !== 'topic')) {
+      entityMap.set(normalizedName, type);
+    }
+  };
+
+  const upsertRelation = (sourceName: string, relation: string, targetName: string) => {
+    const normalizedSource = normalizeGraphCandidateLabel(sourceName);
+    const normalizedRelation = normalizeGraphCandidateLabel(relation);
+    const normalizedTarget = normalizeGraphCandidateLabel(targetName);
+
+    if (!normalizedSource || !normalizedRelation || !normalizedTarget || normalizedSource === normalizedTarget) {
+      return;
+    }
+
+    const key = `${normalizedSource}:${normalizedRelation}:${normalizedTarget}`;
+    relationMap.set(key, {
+      source: normalizedSource,
+      relation: normalizedRelation,
+      target: normalizedTarget
+    });
+  };
+
+  for (const entity of entities) {
+    upsertEntity(entity.name, entity.type);
+  }
+
+  for (const relation of relations) {
+    upsertEntity(relation.source, entityMap.get(relation.source) ?? 'topic');
+    upsertEntity(relation.target, entityMap.get(relation.target) ?? 'topic');
+    upsertRelation(relation.source, relation.relation, relation.target);
+  }
+
+  const combinedText = [source.title, summary, source.text].filter(Boolean).join('. ');
+  const strongOrganizations = [...combinedText.matchAll(/\b[A-Z][a-zA-Z]{1,}\b/g)]
+    .map((match) => match[0])
+    .filter((token) => !(token === token.toUpperCase() && token.length <= 4));
+
+  for (const organizationName of strongOrganizations) {
+    upsertEntity(organizationName, 'organization');
+  }
+
+  const topicPatterns: Array<{ pattern: RegExp; label: string }> = [
+    { pattern: /\bAI agents?\b/i, label: 'AI agents' },
+    { pattern: /\bgasless nanopayments?\b/i, label: 'Gasless nanopayments' },
+    { pattern: /\bsettlement layer\b/i, label: 'Settlement layer' },
+    { pattern: /\bmachine-pay flows?\b/i, label: 'Machine-pay flows' },
+    { pattern: /\bUSDC\b/i, label: 'USDC' },
+    { pattern: /\bpayment network\b/i, label: 'Payment network' },
+    { pattern: /结算层/u, label: '结算层' },
+    { pattern: /支付网络/u, label: '支付网络' },
+    { pattern: /稳定币/u, label: '稳定币' },
+    { pattern: /亚太市场/u, label: '亚太市场' },
+    { pattern: /AI代理|智能代理/u, label: 'AI 代理' }
+  ];
+
+  for (const { pattern, label } of topicPatterns) {
+    if (pattern.test(combinedText)) {
+      upsertEntity(label, 'topic');
+    }
+  }
+
+  const partnerMatch = combinedText.match(
+    /([A-Z][a-zA-Z]{1,})\s+(?:partners with|partnered with|collaborates with)\s+([A-Z][a-zA-Z]{1,})/i
+  );
+
+  if (partnerMatch) {
+    upsertEntity(partnerMatch[1], 'organization');
+    upsertEntity(partnerMatch[2], 'organization');
+    upsertRelation(partnerMatch[1], 'partners_with', partnerMatch[2]);
+  }
+
+  const introducedMatch = source.text.match(
+    /([A-Z][a-zA-Z]{1,})\s+(?:introduced|launched?)\s+([A-Za-z][A-Za-z-]*(?:\s+[A-Za-z][A-Za-z-]*){0,4})(?:\s+for\s+([A-Za-z][A-Za-z-]*(?:\s+[A-Za-z][A-Za-z-]*){0,3}))?/i
+  );
+
+  if (introducedMatch) {
+    const [, actor, product, audience] = introducedMatch;
+    upsertEntity(actor, 'organization');
+    upsertEntity(product, 'topic');
+    upsertRelation(actor, 'introduces', product);
+
+    if (audience) {
+      upsertEntity(audience, 'topic');
+      upsertRelation(product, 'targets', audience);
+    }
+  }
+
+  const providesMatch = source.text.match(
+    /([A-Z][a-zA-Z]{1,})\s+(?:provides|powers|supports)\s+(?:the\s+)?([A-Za-z][A-Za-z-]*(?:\s+[A-Za-z][A-Za-z-]*){0,4})/i
+  );
+
+  if (providesMatch) {
+    const [, actor, capability] = providesMatch;
+    upsertEntity(actor, 'organization');
+    upsertEntity(capability, 'topic');
+    upsertRelation(actor, 'supports', capability);
+  }
+
+  return {
+    entities: [...entityMap.entries()].map(([name, type]) => ({ name, type })),
+    relations: [...relationMap.values()]
+  };
 };
 
 const runMockAgentSession = async (
@@ -363,7 +495,10 @@ export const runAgentGraphSession = async (options: AgentGraphRunOptions): Promi
     entities: runArtifacts.entities,
     relations: runArtifacts.relations,
     runs: runArtifacts.runs,
-    graph: buildAgentGraph(runArtifacts.entities, runArtifacts.relations),
+    graph: (() => {
+      const graphInputs = buildGraphInputs(source, runArtifacts.summary, runArtifacts.entities, runArtifacts.relations);
+      return buildAgentGraph(graphInputs.entities, graphInputs.relations);
+    })(),
     totals: {
       totalPrice: sumPrices(runArtifacts.runs.map((run) => run.price)),
       successfulRuns: runArtifacts.runs.length

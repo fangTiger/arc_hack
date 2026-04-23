@@ -270,6 +270,8 @@ const buildSource = (input: LiveAgentSessionCreateInput): ExtractionRequest => (
   ...(normalizeMetadata(input.metadata) ? { metadata: normalizeMetadata(input.metadata) } : {})
 });
 
+const LIVE_SESSION_HEARTBEAT_INTERVAL_MS = 2_000;
+
 export class LiveAgentSessionService {
   private readonly runAgentGraphSessionImpl: (options: AgentGraphRunOptions) => Promise<AgentGraphRunResult>;
 
@@ -342,6 +344,16 @@ export class LiveAgentSessionService {
       sessionId: session.sessionId,
       mode: session.mode
     });
+    const heartbeatTimer = setInterval(() => {
+      void this.options.liveSessionStore.touchSession(session.sessionId).catch((error) => {
+        logLiveSession(this.options.runtimeEnv, 'heartbeat touch failed', {
+          sessionId: session.sessionId,
+          error: extractErrorMessage(this.options.runtimeEnv, error)
+        });
+      });
+    }, LIVE_SESSION_HEARTBEAT_INTERVAL_MS);
+
+    heartbeatTimer.unref?.();
 
     try {
       const result = await this.runAgentGraphSessionImpl({
@@ -393,6 +405,8 @@ export class LiveAgentSessionService {
         sessionId: session.sessionId,
         error: session.error ?? 'Unknown live session error.'
       });
+    } finally {
+      clearInterval(heartbeatTimer);
     }
   }
 }

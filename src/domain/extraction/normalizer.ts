@@ -8,9 +8,11 @@ import type {
   RelationExtractionResult
 } from './types.js';
 
-const MAX_ENTITY_COUNT = 4;
+const MAX_STRONG_ENTITY_COUNT = 8;
+const MAX_WEAK_ENTITY_COUNT = 4;
 const MIN_WEAK_ENTITY_COUNT = 2;
-const MAX_RELATION_COUNT = 3;
+const MAX_STRONG_RELATION_COUNT = 10;
+const MAX_WEAK_RELATION_COUNT = 3;
 const WEAK_RELATION_LABELS = ['日期', '状态', '描述', '提到'] as const;
 const STRONG_ENTITY_TOKEN_PATTERN = /\b[A-Z][a-zA-Z]{1,}\b/g;
 const WEAK_SIGNAL_CUE_PATTERN = /今天|昨天|明天|星期[一二三四五六日天]|周[一二三四五六日天]|天气|没啥特别|没什么特别|日常|普通|一般|不错/u;
@@ -80,7 +82,7 @@ const extractWeakTopicCandidates = (request: ExtractionRequest): string[] => {
     dedupedCandidates.push(dedupedCandidates.length === 0 ? '今日观察' : '日常状态');
   }
 
-  return dedupedCandidates.slice(0, MAX_ENTITY_COUNT);
+  return dedupedCandidates.slice(0, MAX_WEAK_ENTITY_COUNT);
 };
 
 export const extractStrongEntityHints = (request: ExtractionRequest): ExtractionEntity[] => {
@@ -90,7 +92,7 @@ export const extractStrongEntityHints = (request: ExtractionRequest): Extraction
 
   return dedupeByName(filteredMatches.map((name) => ({ name, type: 'organization' as const }))).slice(
     0,
-    MAX_ENTITY_COUNT
+    MAX_STRONG_ENTITY_COUNT
   );
 };
 
@@ -109,7 +111,7 @@ export const buildFallbackEntities = (request: ExtractionRequest): ExtractionEnt
   const strongHints = extractStrongEntityHints(request);
 
   if (strongHints.length >= 2 && !isWeakSignalRequest(request)) {
-    return strongHints.slice(0, MAX_ENTITY_COUNT);
+    return strongHints.slice(0, MAX_STRONG_ENTITY_COUNT);
   }
 
   return extractWeakTopicCandidates(request).map((name) => ({
@@ -162,7 +164,24 @@ const createWeakRelations = (entities: ExtractionEntity[]): ExtractionRelation[]
     });
   }
 
-  return relations.slice(0, MAX_RELATION_COUNT);
+  return relations.slice(0, MAX_WEAK_RELATION_COUNT);
+};
+
+const buildStrongFallbackRelations = (entities: ExtractionEntity[]): ExtractionRelation[] => {
+  const primaryEntity = entities.find((entity) => entity.type !== 'topic') ?? entities[0];
+
+  if (!primaryEntity) {
+    return [];
+  }
+
+  return entities
+    .filter((entity) => entity.name !== primaryEntity.name)
+    .slice(0, MAX_STRONG_RELATION_COUNT)
+    .map((entity, index) => ({
+      source: primaryEntity.name,
+      relation: index === 0 ? 'mentions' : '关联',
+      target: entity.name
+    }));
 };
 
 export const buildFallbackRelations = (request: ExtractionRequest, entities: ExtractionEntity[] = buildFallbackEntities(request)): ExtractionRelation[] => {
@@ -170,13 +189,7 @@ export const buildFallbackRelations = (request: ExtractionRequest, entities: Ext
     const strongEntities = entities.filter((entity) => entity.type !== 'topic');
 
     if (strongEntities.length >= 2) {
-      return [
-        {
-          source: strongEntities[0].name,
-          relation: 'mentions',
-          target: strongEntities[1].name
-        }
-      ];
+      return buildStrongFallbackRelations(entities);
     }
   }
 
@@ -209,7 +222,7 @@ export const normalizeEntities = (
       return buildFallbackEntities(request);
     }
 
-    return normalizedEntities.slice(0, MAX_ENTITY_COUNT);
+    return normalizedEntities.slice(0, MAX_WEAK_ENTITY_COUNT);
   }
 
   if (strongHints.length >= 2) {
@@ -232,7 +245,7 @@ export const normalizeEntities = (
     return buildFallbackEntities(request);
   }
 
-  return normalizedEntities.slice(0, MAX_ENTITY_COUNT);
+  return normalizedEntities.slice(0, MAX_STRONG_ENTITY_COUNT);
 };
 
 const normalizeWeakRelationLabel = (label: string, index: number): string => {
@@ -282,7 +295,7 @@ export const normalizeRelations = (
     return buildFallbackRelations(request, entities);
   }
 
-  return dedupedRelations.slice(0, MAX_RELATION_COUNT);
+  return dedupedRelations.slice(0, isWeakSignalRequest(request) ? MAX_WEAK_RELATION_COUNT : MAX_STRONG_RELATION_COUNT);
 };
 
 export const normalizeExtractionResult = (

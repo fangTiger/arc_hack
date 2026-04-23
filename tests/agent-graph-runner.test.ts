@@ -75,16 +75,16 @@ describe('runAgentGraphSession', () => {
     expect(result.session.runs).toHaveLength(3);
     expect(result.session.runs.map((run) => run.operation)).toEqual(['summary', 'entities', 'relations']);
     expect(result.session.runs.every((run) => Boolean(run.receiptTxHash))).toBe(true);
-    expect(result.session.graph.nodes).toHaveLength(2);
-    expect(result.session.graph.edges).toEqual([
-      {
-        id: 'Arc:mentions:Circle',
-        source: 'Arc',
-        target: 'Circle',
-        label: 'mentions',
-        provenance: 'original'
-      }
-    ]);
+    expect(result.session.graph.nodes.length).toBeGreaterThanOrEqual(4);
+    expect(result.session.graph.nodes.length).toBeLessThanOrEqual(10);
+    expect(result.session.graph.edges.length).toBeGreaterThanOrEqual(3);
+    expect(result.session.graph.edges.some((edge) => edge.provenance === 'original')).toBe(true);
+    expect(result.session.graph.nodes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'Arc' }),
+        expect.objectContaining({ id: 'Circle' })
+      ])
+    );
     expect(persisted).toMatchObject({
       sessionId: 'session-mock',
       source,

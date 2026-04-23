@@ -187,4 +187,44 @@ describe('buildAgentGraph', () => {
       })
     ]);
   });
+
+  it('should keep a denser but bounded core graph for rich article inputs', () => {
+    const graph = buildAgentGraph(
+      [
+        { name: 'Arc', type: 'organization' },
+        { name: 'Circle', type: 'organization' },
+        { name: 'USDC', type: 'topic' },
+        { name: 'AI agents', type: 'topic' },
+        { name: 'Settlement layer', type: 'topic' },
+        { name: 'Gasless payments', type: 'topic' },
+        { name: 'Gateway buyer', type: 'topic' },
+        { name: 'Machine-pay flows', type: 'topic' },
+        { name: 'Asia market', type: 'topic' }
+      ],
+      [
+        { source: 'Arc', relation: 'partners_with', target: 'Circle' },
+        { source: 'Circle', relation: 'settles', target: 'USDC' },
+        { source: 'Arc', relation: 'serves', target: 'AI agents' },
+        { source: 'Arc', relation: 'supports', target: 'Gasless payments' },
+        { source: 'Circle', relation: 'powers', target: 'Settlement layer' },
+        { source: 'Gateway buyer', relation: 'connects_to', target: 'Arc' },
+        { source: 'Gateway buyer', relation: 'uses', target: 'USDC' },
+        { source: 'Machine-pay flows', relation: 'targets', target: 'AI agents' },
+        { source: 'Machine-pay flows', relation: 'settles_with', target: 'Settlement layer' },
+        { source: 'Gateway buyer', relation: 'routes', target: 'Machine-pay flows' },
+        { source: 'Circle', relation: 'supports', target: 'Machine-pay flows' }
+      ]
+    );
+
+    expect(graph.nodes.length).toBeGreaterThanOrEqual(6);
+    expect(graph.nodes.length).toBeLessThanOrEqual(10);
+    expect(graph.edges.length).toBeGreaterThanOrEqual(5);
+    expect(graph.edges.length).toBeLessThanOrEqual(12);
+    expect(graph.edges.filter((edge) => edge.provenance === 'original').length).toBeGreaterThan(
+      graph.edges.filter((edge) => edge.provenance === 'derived').length
+    );
+    expect(graph.nodes.map((node) => node.id)).toEqual(
+      expect.arrayContaining(['Arc', 'Circle', 'USDC', 'AI agents'])
+    );
+  });
 });

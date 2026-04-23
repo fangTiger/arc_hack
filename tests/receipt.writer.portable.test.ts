@@ -7,6 +7,7 @@ const {
   getTransactionCountMock,
   httpMock,
   privateKeyToAccountMock,
+  waitForTransactionReceiptMock,
   sendTransactionMock
 } = vi.hoisted(() => ({
   createPublicClientMock: vi.fn(),
@@ -15,6 +16,7 @@ const {
   getTransactionCountMock: vi.fn(),
   httpMock: vi.fn(),
   privateKeyToAccountMock: vi.fn(),
+  waitForTransactionReceiptMock: vi.fn(),
   sendTransactionMock: vi.fn()
 }));
 
@@ -49,7 +51,8 @@ beforeEach(() => {
   getTransactionCountMock.mockResolvedValue(121);
   sendTransactionMock.mockResolvedValue(defaultTxHash);
   createPublicClientMock.mockReturnValue({
-    getTransactionCount: getTransactionCountMock
+    getTransactionCount: getTransactionCountMock,
+    waitForTransactionReceipt: waitForTransactionReceiptMock
   });
   createWalletClientMock.mockReturnValue({
     sendTransaction: sendTransactionMock
@@ -57,6 +60,9 @@ beforeEach(() => {
   encodeFunctionDataMock.mockReturnValue('0xencoded');
   httpMock.mockReturnValue({ transport: 'http' });
   privateKeyToAccountMock.mockReturnValue(defaultAccount);
+  waitForTransactionReceiptMock.mockResolvedValue({
+    transactionHash: defaultTxHash
+  });
 });
 
 afterEach(() => {
@@ -128,6 +134,52 @@ describe('portable receipt writer', () => {
       data: '0xencoded',
       nonce: 121
     });
+    expect(waitForTransactionReceiptMock).toHaveBeenCalledWith({
+      hash: defaultTxHash
+    });
+  });
+
+  it('waits for the receipt transaction to be mined before resolving', async () => {
+    let releaseReceipt: () => void = () => undefined;
+    waitForTransactionReceiptMock.mockReturnValueOnce(
+      new Promise((resolve) => {
+        releaseReceipt = () =>
+          resolve({
+            transactionHash: defaultTxHash
+          });
+      })
+    );
+
+    const { createReceiptWriter } = await loadReceiptWriterModule();
+    const writer = createReceiptWriter({
+      mode: 'arc',
+      rpcUrl: 'https://arc.example',
+      contractAddress: '0x1234567890123456789012345678901234567890',
+      privateKey: '0xabc'
+    });
+
+    let settled = false;
+    const pendingWrite = writer.write({
+      requestId: 'demo-001',
+      operation: 'summary',
+      payloadHash: '0x1111111111111111111111111111111111111111111111111111111111111111'
+    }).then(() => {
+      settled = true;
+    });
+
+    await vi.waitFor(() => {
+      expect(waitForTransactionReceiptMock).toHaveBeenCalledWith({
+        hash: defaultTxHash
+      });
+    });
+
+    expect(sendTransactionMock).toHaveBeenCalledTimes(1);
+    expect(settled).toBe(false);
+
+    releaseReceipt();
+    await pendingWrite;
+
+    expect(settled).toBe(true);
   });
 
   it('increments the nonce locally across sequential receipt writes even when the rpc nonce lags', async () => {
@@ -174,7 +226,7 @@ describe('portable receipt writer', () => {
     );
   });
 
-  it('keeps the next nonce reserved after an ambiguous transport failure', async () => {
+  it('keeps the next nonce reserved after an ambiguous send failure with no rpc response', async () => {
     getTransactionCountMock
       .mockResolvedValueOnce(121)
       .mockResolvedValueOnce(121)
@@ -182,6 +234,52 @@ describe('portable receipt writer', () => {
     sendTransactionMock
       .mockRejectedValueOnce(new Error('request timed out while waiting for rpc response'))
       .mockResolvedValueOnce(defaultTxHash);
+
+    const { createReceiptWriter } = await loadReceiptWriterModule();
+    const writer = createReceiptWriter({
+      mode: 'arc',
+      rpcUrl: 'https://arc.example',
+      contractAddress: '0x1234567890123456789012345678901234567890',
+      privateKey: '0xabc'
+    });
+
+    await expect(
+      writer.write({
+        requestId: 'demo-001',
+        operation: 'summary',
+        payloadHash: '0x1111111111111111111111111111111111111111111111111111111111111111'
+      })
+    ).rejects.toThrow('request timed out');
+
+    await expect(
+      writer.write({
+        requestId: 'demo-002',
+        operation: 'entities',
+        payloadHash: '0x2222222222222222222222222222222222222222222222222222222222222222'
+      })
+    ).resolves.toEqual({
+      mode: 'arc',
+      txHash: defaultTxHash
+    });
+
+    expect(sendTransactionMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        nonce: 122
+      })
+    );
+  });
+
+  it('keeps the next nonce reserved after an ambiguous post-broadcast receipt wait failure', async () => {
+    getTransactionCountMock
+      .mockResolvedValueOnce(121)
+      .mockResolvedValueOnce(121)
+      .mockResolvedValueOnce(121);
+    waitForTransactionReceiptMock
+      .mockRejectedValueOnce(new Error('request timed out while waiting for receipt'))
+      .mockResolvedValueOnce({
+        transactionHash: defaultTxHash
+      });
 
     const { createReceiptWriter } = await loadReceiptWriterModule();
     const writer = createReceiptWriter({
@@ -260,5 +358,33 @@ describe('portable receipt writer', () => {
         nonce: 130
       })
     );
+  });
+
+  it('retries transient txpool pressure errors before failing the receipt write', async () => {
+    getTransactionCountMock.mockResolvedValue(121);
+    sendTransactionMock
+      .mockRejectedValueOnce(new Error('txpool is full'))
+      .mockResolvedValueOnce(defaultTxHash);
+
+    const { createReceiptWriter } = await loadReceiptWriterModule();
+    const writer = createReceiptWriter({
+      mode: 'arc',
+      rpcUrl: 'https://arc.example',
+      contractAddress: '0x1234567890123456789012345678901234567890',
+      privateKey: '0xabc'
+    });
+
+    await expect(
+      writer.write({
+        requestId: 'demo-003',
+        operation: 'relations',
+        payloadHash: '0x3333333333333333333333333333333333333333333333333333333333333333'
+      })
+    ).resolves.toEqual({
+      mode: 'arc',
+      txHash: defaultTxHash
+    });
+
+    expect(sendTransactionMock).toHaveBeenCalledTimes(2);
   });
 });
