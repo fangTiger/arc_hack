@@ -193,6 +193,8 @@ describe('createLiveRouter', () => {
     expect(response.text).toContain('开始分析');
     expect(response.text).not.toContain('开始演示');
     expect(response.text).toContain('preset-launcher');
+    expect(response.text).toContain('直接分析');
+    expect(response.text).not.toContain('使用本地缓存');
     expect(response.text).toContain('detail-drawer');
     expect(response.text).toContain('detail-panel');
     expect(response.text).toContain('graph-modal');
@@ -204,7 +206,8 @@ describe('createLiveRouter', () => {
     expect(response.text).toContain('事件总览');
     expect(response.text).toContain('关键判断');
     expect(response.text).toContain('证据摘录');
-    expect(response.text).toContain('深读层');
+    expect(response.text).toContain('延展阅读');
+    expect(response.text).toContain('完整摘要、延展判断与复核提示会在这里继续展开');
     expect(response.text).toContain('main-reading-rail');
     expect(response.text).toContain('辅助关系图');
     expect(response.text).toContain('关键判断需要证据挂钩');
@@ -244,7 +247,7 @@ describe('createLiveRouter', () => {
     expect(response.text).toContain('来源状态');
     expect(response.text).toContain('前文上下文');
     expect(response.text).toContain('后文上下文');
-    expect(response.text).toContain('缓存说明');
+    expect(response.text).toContain('启动说明');
     expect(response.text).toContain('原始片段');
     expect(response.text).toContain('直接启动分析');
     expect(response.text).toContain('查看原文');
@@ -253,6 +256,8 @@ describe('createLiveRouter', () => {
     expect(response.text).toContain('@media (max-width: 720px)');
     expect(response.text).not.toContain('滚轮缩放，拖动画布可查看细节。graphUrl');
     expect(response.text).not.toContain('把 agent 运行过程直接录进同一块屏幕');
+    expect(response.text).not.toContain('支持白名单链接、手动文本与预置样本。导入边界会在这里明确展示。');
+    expect(response.text).not.toContain('白名单链接');
 
     const openGraphModalMatch = response.text.match(/const openGraphModal = \(session\) => \{([\s\S]*?)\n        \};/);
 

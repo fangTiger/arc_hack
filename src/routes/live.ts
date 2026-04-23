@@ -305,7 +305,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
             presetTitle: preset.title,
             presetSource: SUPPORTED_NEWS_SOURCE_LABELS[preset.sourceSite],
             presetSummary: preset.excerpt,
-            cacheNote: '已缓存导入结果，可直接启动分析。',
+            cacheNote: '已预置完整材料，可直接进入分析。',
             actions: [
               { type: 'preset-launch', label: '直接启动分析', presetId: preset.id },
               { type: 'link', label: '查看原文', href: preset.articleUrl }
@@ -321,7 +321,12 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           <h3>${escapeHtml(preset.title)}</h3>
           <p class="preset-excerpt">${escapeHtml(preset.excerpt)}</p>
           <p class="preset-snippet">${escapeHtml(preset.text.split('\n\n')[0])}</p>
-          <button type="button" class="secondary preset-launch-button" data-preset-id="${escapeHtml(preset.id)}">使用本地缓存</button>
+          <button
+            type="button"
+            class="secondary preset-launch-button"
+            data-preset-id="${escapeHtml(preset.id)}"
+            data-testid="preset-launch-${escapeHtml(preset.id)}"
+          >直接分析</button>
         </article>
       `
     )
@@ -1141,6 +1146,39 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           white-space: pre-wrap;
         }
 
+        .deep-reading-blocks {
+          display: grid;
+          gap: 14px;
+          margin-top: 16px;
+        }
+
+        .deep-reading-block {
+          display: grid;
+          gap: 8px;
+          padding-top: 14px;
+          border-top: 1px solid rgba(148, 163, 184, 0.16);
+        }
+
+        .deep-reading-block:first-child {
+          padding-top: 0;
+          border-top: none;
+        }
+
+        .deep-reading-block h4 {
+          margin: 0;
+          font-size: 14px;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          color: var(--gold);
+        }
+
+        .deep-reading-meta {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+          margin-top: 14px;
+        }
+
         .credential-list .evidence-item {
           background: rgba(248, 250, 252, 0.92);
         }
@@ -1439,7 +1477,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
         <section class="layout">
           <article class="panel input-panel">
             <details id="source-drawer" class="source-drawer">
-              <summary class="source-drawer-summary">
+              <summary class="source-drawer-summary" data-testid="source-drawer-toggle">
                 <div class="source-drawer-copy">
                   <div class="section-kicker">导入仓</div>
                   <h2>收纳式导入仓</h2>
@@ -1459,7 +1497,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
 
                 <label id="article-url-field">
                   文章链接
-                  <input id="article-url-input" placeholder="https://wublock123.com/p/654321" />
+                  <input id="article-url-input" placeholder="粘贴资讯原文链接" />
                 </label>
 
                 <div id="manual-fields">
@@ -1545,12 +1583,13 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
 
                 <section class="deep-reading-section">
                   <div class="section-heading">
-                    <h3>深读层</h3>
-                    <p class="muted">完整摘要、长证据与复核提示会在这里继续铺开，不打断首屏的主阅读链。</p>
+                    <h3>延展阅读</h3>
+                    <p class="muted">完整摘要、延展判断与复核提示会在这里继续展开，不打断首屏的主阅读链。</p>
                   </div>
                   <article class="deep-reading-card">
-                    <p id="deep-reading-copy">深读层会在首轮结果返回后展示完整判断正文、长摘要与后续核验提示。</p>
-                    <div id="deep-reading-context" class="judgment-meta"></div>
+                    <p id="deep-reading-copy">完整摘要、延展判断与复核提示会在首轮结果返回后继续展开。</p>
+                    <div id="deep-reading-context" class="deep-reading-blocks"></div>
+                    <div id="deep-reading-meta" class="deep-reading-meta"></div>
                   </article>
                 </section>
               </div>
@@ -1564,7 +1603,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
                 <article class="sidebar-card">
                   <div class="section-kicker">导入来源</div>
                   <div id="source-preview" class="source-list">
-                    <p class="source-note">支持白名单链接、手动文本与预置样本。导入边界会在这里明确展示。</p>
+                    <p class="source-note">可通过链接导入、手动文本或预置样本启动分析，来源方式与导入状态会在这里持续展示。</p>
                   </div>
                 </article>
 
@@ -1674,7 +1713,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
                     <p id="detail-preset-source" class="detail-copy"></p>
                   </div>
                   <div class="detail-meta-row">
-                    <strong>缓存说明</strong>
+                    <strong>启动说明</strong>
                     <p id="detail-preset-cache" class="detail-copy"></p>
                   </div>
                   <div class="detail-meta-row">
@@ -1760,6 +1799,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
         const evidencePreview = document.getElementById('evidence-preview');
         const deepReadingCopy = document.getElementById('deep-reading-copy');
         const deepReadingContext = document.getElementById('deep-reading-context');
+        const deepReadingMeta = document.getElementById('deep-reading-meta');
         const sourcePreview = document.getElementById('source-preview');
         const entityPreview = document.getElementById('entity-preview');
         const credentialPreview = document.getElementById('credential-preview');
@@ -2229,9 +2269,10 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
           }
 
           judgmentList.innerHTML = judgments
-            .map((judgment) => \`
+            .map((judgment, index) => \`
               <article
                 class="judgment-card card-detail-trigger"
+                data-testid="judgment-card-\${index}"
                 data-detail-payload="\${escapeText(JSON.stringify({
                   kind: 'judgment',
                   kicker: judgment.kicker,
@@ -2315,21 +2356,27 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
         };
 
         const renderDeepReading = (session, workbenchModel) => {
-          if (!deepReadingCopy || !deepReadingContext) {
+          if (!deepReadingCopy || !deepReadingContext || !deepReadingMeta) {
             return;
           }
 
           if (!session) {
-            deepReadingCopy.textContent = '深读层会在首轮结果返回后展示完整判断正文、长摘要与后续核验提示。';
+            deepReadingCopy.textContent = '完整摘要、延展判断与复核提示会在首轮结果返回后继续展开。';
             deepReadingContext.innerHTML = '';
+            deepReadingMeta.innerHTML = '';
             return;
           }
 
-          deepReadingCopy.textContent =
-            workbenchModel.fullSummary ||
-            workbenchModel.summary ||
-            '系统正在组织长摘要与复核提示，请先结合上方判断与证据继续阅读。';
-          deepReadingContext.innerHTML = [
+          deepReadingCopy.textContent = workbenchModel.deepReadingLead;
+          deepReadingContext.innerHTML = workbenchModel.deepReadingSections
+            .map((section) => \`
+              <article class="deep-reading-block">
+                <h4>\${escapeText(section.title)}</h4>
+                <p>\${escapeText(section.body)}</p>
+              </article>
+            \`)
+            .join('');
+          deepReadingMeta.innerHTML = [
             workbenchModel.phaseLabel,
             workbenchModel.sourceStatusValue,
             workbenchModel.credentialStatusValue,
@@ -2342,7 +2389,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
 
         const renderSource = (session, workbenchModel) => {
           if (!session) {
-            sourcePreview.innerHTML = '<p class="source-note">支持白名单链接、手动文本与预置样本。导入边界会在这里明确展示。</p>';
+            sourcePreview.innerHTML = '<p class="source-note">可通过链接导入、手动文本或预置样本启动分析，来源方式与导入状态会在这里持续展示。</p>';
             return;
           }
 
@@ -2451,7 +2498,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv): string => {
         const buildGraphCardHeader = (expandable) => \`
             <div class="graph-preview-header">
               <div class="stage-label">辅助关系图</div>
-              \${expandable ? '<button type="button" class="copy-button graph-expand-button" data-graph-expand="true">展开关系图</button>' : ''}
+              \${expandable ? '<button type="button" class="copy-button graph-expand-button" data-graph-expand="true" data-testid="graph-expand-button">展开关系图</button>' : ''}
             </div>
         \`;
 

@@ -93,6 +93,11 @@ export type LiveWorkbenchJudgment = {
   };
 };
 
+export type LiveWorkbenchDeepReadingSection = {
+  title: string;
+  body: string;
+};
+
 export type LiveWorkbenchViewModel = {
   pageStateLabel: string;
   pageStateTone: 'idle' | 'ready' | 'running' | 'completed' | 'failed';
@@ -109,6 +114,8 @@ export type LiveWorkbenchViewModel = {
   summary: string;
   briefing: string;
   fullSummary: string;
+  deepReadingLead: string;
+  deepReadingSections: LiveWorkbenchDeepReadingSection[];
   eventTypeValue: string;
   importanceValue: string;
   sourceModeValue: string;
@@ -271,7 +278,7 @@ export function formatImportStatusLabel(importStatus: SourceMetadata['importStat
 export function formatImportModeLabel(importMode: SourceMetadata['importMode'] | undefined): string {
   switch (importMode) {
     case 'link':
-      return '白名单链接';
+      return '链接导入';
     case 'preset':
       return '预置样本';
     case 'manual':
@@ -570,7 +577,7 @@ export function getPageStateSummary(session: LiveWorkbenchSessionLike | null | u
       ? '待分析：材料已录入，可直接开始本轮分析。'
       : '待导入：请先补充分析材料。',
     nextActionLabel: readyToAnalyze ? '开始分析' : '导入材料',
-    nextActionHint: readyToAnalyze ? '工作台会保留骨架并等待结果返回。' : '支持白名单链接、手动文本与预置样本。'
+    nextActionHint: readyToAnalyze ? '工作台会保留骨架并等待结果返回。' : '可导入链接、正文或预置样本。'
   };
 }
 
@@ -799,6 +806,40 @@ export function createLiveWorkbenchViewModel(
         : `${importModeLabel} · ${importStatusLabel}`;
   const currentObjectValue = getDisplaySourceTitle(session) ?? getDisplayHeadline(session);
   const runStatusValue = `${pageState.label} · ${getPhaseLabel(session).replace(/^阶段：/, '')}`;
+  const judgments = buildJudgments(session, supportedSourceLabels);
+  const evidenceSectionNote = retainedResult
+    ? session?.status === 'failed'
+      ? '本轮失败，已保留上一版证据摘录与失败反馈，便于继续人工复核；暂不宣称已完成逐句证据对齐。'
+      : '当前展示的是上一版证据摘录；新结果生成期间会继续保留它们供人工复核，直到新结果成功替换。'
+    : '当前展示的是相关原文片段，便于人工复核；暂不宣称已完成逐句证据对齐。';
+  const deepReadingLead = summaryReady
+    ? '完整摘要、延展判断与复核提示会在这里继续展开，帮助你在首屏结论之外继续深读。'
+    : '完整摘要、延展判断与复核提示会在分析完成后继续展开。';
+  const deepReadingSections = summaryReady
+    ? [
+        {
+          title: '完整摘要',
+          body: fullSummary || summary || '事件摘要已返回，建议继续结合原文语境复核。'
+        },
+        {
+          title: '延展判断',
+          body:
+            judgments
+              .slice(0, 3)
+              .map((judgment) => `${judgment.title}：${judgment.body}`)
+              .join('\n\n') || '首屏判断尚未完全展开，建议结合证据摘录与主体关系继续补充判断。'
+        },
+        {
+          title: '复核提示',
+          body: [
+            evidenceSectionNote,
+            `来源状态：${sourceStatusValue}。`,
+            `凭证状态：${credentialStatusValue}。`,
+            retainedResult ? '当前仍在沿用上一版结果，请结合本轮状态继续判断是否需要重试。' : '当前结果已接管工作台，可继续向下复核。'
+          ].join(' ')
+        }
+      ]
+    : [];
 
   return {
     pageStateLabel: pageState.label,
@@ -816,16 +857,14 @@ export function createLiveWorkbenchViewModel(
     summary,
     briefing,
     fullSummary,
+    deepReadingLead,
+    deepReadingSections,
     eventTypeValue,
     importanceValue,
     sourceModeValue,
     totalPriceValue: getTotalPrice(session),
-    judgments: buildJudgments(session, supportedSourceLabels),
-    evidenceSectionNote: retainedResult
-      ? session?.status === 'failed'
-        ? '本轮失败，已保留上一版证据摘录与失败反馈，便于继续人工复核；暂不宣称已完成逐句证据对齐。'
-        : '当前展示的是上一版证据摘录；新结果生成期间会继续保留它们供人工复核，直到新结果成功替换。'
-      : '当前展示的是相关原文片段，便于人工复核；暂不宣称已完成逐句证据对齐。',
+    judgments,
+    evidenceSectionNote,
     sourceLabel,
     sourceTypeLabel: session?.source?.sourceType ?? 'news',
     importModeLabel,

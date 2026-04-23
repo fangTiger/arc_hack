@@ -477,17 +477,61 @@ describe('live workbench view model', () => {
     const viewModel = createLiveWorkbenchViewModel(session, supportedSourceLabels);
 
     expect(viewModel.judgments[0]?.detailTags).toEqual(expect.arrayContaining(['融资（初步归类）', '重要性 高']));
-    expect(viewModel.judgments[0]?.detailSourceStatus).toBe('PANews · 白名单链接 · 缓存回退');
+    expect(viewModel.judgments[0]?.detailSourceStatus).toBe('PANews · 链接导入 · 缓存回退');
     expect(viewModel.judgments[1]?.evidenceDetail).toMatchObject({
       currentQuote: 'Arc 将负责代理支付编排，并与 Circle 共同提供结算能力。',
       previousQuote: 'PANews 4 月 22 日消息，某协议宣布完成 5000 万美元融资。',
       nextQuote: '团队表示，新资金将优先用于扩展亚洲市场和合规建设。',
       sourceSite: 'PANews',
-      importModeLabel: '白名单链接',
+      importModeLabel: '链接导入',
       importStatusLabel: '缓存回退',
       cachedAt: '2026-04-22T11:22:33.000Z',
       articleUrl: 'https://www.panewslab.com/articles/0123456789'
     });
+  });
+
+  it('should build structured deep reading content after analysis is ready', () => {
+    const session = createSession({
+      source: {
+        sourceType: 'news',
+        title: 'PANews：某协议完成 5000 万美元融资',
+        text: [
+          'PANews 4 月 22 日消息，某协议宣布完成 5000 万美元融资。',
+          'Arc 将负责代理支付编排，并与 Circle 共同提供结算能力。',
+          '团队表示，新资金将优先用于扩展亚洲市场和合规建设。'
+        ].join(' '),
+        metadata: {
+          importMode: 'link',
+          sourceSite: 'panews',
+          importStatus: 'cache',
+          cachedAt: '2026-04-22T11:22:33.000Z'
+        }
+      },
+      preview: {
+        summary: '某协议完成 5000 万美元融资，并引入 Arc 与 Circle 作为结算与支付编排伙伴。',
+        entities: [
+          { name: 'Arc', type: 'organization' },
+          { name: 'Circle', type: 'organization' }
+        ],
+        relations: [{ source: 'Arc', relation: 'partners_with', target: 'Circle' }]
+      }
+    });
+
+    const viewModel = createLiveWorkbenchViewModel(session, supportedSourceLabels);
+
+    expect(viewModel.deepReadingLead).toContain('完整摘要');
+    expect(viewModel.deepReadingSections).toHaveLength(3);
+    expect(viewModel.deepReadingSections[0]).toMatchObject({
+      title: '完整摘要',
+      body: '某协议完成 5000 万美元融资，并引入 Arc 与 Circle 作为结算与支付编排伙伴。'
+    });
+    expect(viewModel.deepReadingSections[1]?.title).toBe('延展判断');
+    expect(viewModel.deepReadingSections[1]?.body).toContain('初步归类为融资');
+    expect(viewModel.deepReadingSections[2]).toMatchObject({
+      title: '复核提示'
+    });
+    expect(viewModel.deepReadingSections[2]?.body).toContain('链接导入 · 缓存回退');
+    expect(viewModel.deepReadingSections[2]?.body).toContain('3 条凭证已回填');
   });
 
   it('should downgrade running gateway copy to batch replay language', () => {
