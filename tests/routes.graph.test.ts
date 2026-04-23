@@ -115,7 +115,7 @@ const createTestAppWithSessions = async (sessions: AgentSession[]) => {
 };
 
 describe('createGraphRouter', () => {
-  it('should render the latest graph page with source metadata, copy actions and article link', async () => {
+  it('should render the latest graph page as a relationship browser with a workbench return entry', async () => {
     const app = await createTestApp();
 
     const response = await invokeApp(app, {
@@ -125,18 +125,16 @@ describe('createGraphRouter', () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.text).toContain('session-graph');
-    expect(response.text).toContain('Arc partners with Circle on machine-pay flows.');
+    expect(response.text).toContain('返回工作台');
+    expect(response.text).toContain('/demo/live');
     expect(response.text).toContain('graph-canvas');
     expect(response.text).toContain('cdn.jsdelivr.net/npm/echarts@5');
     expect(response.text).toContain('roam: true');
     expect(response.text).toContain('滚轮缩放');
     expect(response.text).toContain('拖动画布');
-    expect(response.text).toContain('mock-agent-001');
-    expect(response.text).toContain('0xb716431da93f68d44743c4348da003f1c86a69497fa20bc583f6e6c8e6fbbdd8');
-    expect(response.text).toContain('copyField');
-    expect(response.text).toContain('复制');
-    expect(response.text).toContain('https://testnet.arcscan.app/tx/0xb716431da93f68d44743c4348da003f1c86a69497fa20bc583f6e6c8e6fbbdd8');
-    expect(response.text).toContain('https://testnet.arcscan.app/address/0x70a65aa0cb3ee82cf8ba353d585f880c943d68c0');
+    expect(response.text).toContain('辅助关系浏览器');
+    expect(response.text).toContain('关系清单');
+    expect(response.text).toContain('来源元数据');
     expect(response.text).toContain('导入来源');
     expect(response.text).toContain('articleUrl');
     expect(response.text).toContain('sourceSite');
@@ -144,7 +142,13 @@ describe('createGraphRouter', () => {
     expect(response.text).toContain('wublock123');
     expect(response.text).toContain('https://wublock123.com/p/654321');
     expect(response.text).toContain('原文');
-    expect(response.text).toContain('derived 仅用于展示连通性');
+    expect(response.text).toContain('derived 仅用于浏览连通性，不代表真实抽取关系');
+    expect(response.text).not.toContain('分析凭证');
+    expect(response.text).not.toContain('Source Text');
+    expect(response.text).not.toContain('Arc partners with Circle on machine-pay flows.');
+    expect(response.text).not.toContain('Arc introduced gasless nanopayments for AI agents. Circle provides the settlement layer.');
+    expect(response.text).not.toContain('mock-agent-001');
+    expect(response.text).not.toContain('0xb716431da93f68d44743c4348da003f1c86a69497fa20bc583f6e6c8e6fbbdd8');
   });
 
   it('should surface import status, cachedAt and derived edge guidance when present', async () => {
@@ -176,7 +180,8 @@ describe('createGraphRouter', () => {
     expect(response.text).toContain('缓存回退');
     expect(response.text).toContain('cachedAt');
     expect(response.text).toContain('2026-04-22T11:22:33.000Z');
-    expect(response.text).toContain('derived 仅用于展示连通性');
+    expect(response.text).toContain('返回工作台');
+    expect(response.text).toContain('derived 仅用于浏览连通性，不代表真实抽取关系');
   });
 
   it('should keep old sessions without metadata compatible and return 404 when the session is missing', async () => {
@@ -202,7 +207,7 @@ describe('createGraphRouter', () => {
     });
 
     expect(okResponse.statusCode).toBe(200);
-    expect(okResponse.text).toContain('关系图');
+    expect(okResponse.text).toContain('辅助关系浏览器');
     expect(okResponse.text).toContain('Legacy session');
     expect(okResponse.text).toContain('未记录导入来源');
     expect(okResponse.text).not.toContain('https://wublock123.com/p/654321');

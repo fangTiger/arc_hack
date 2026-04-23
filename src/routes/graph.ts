@@ -4,12 +4,6 @@ import type { AgentSession } from '../demo/agent-graph.js';
 import type { RuntimeEnv } from '../config/env.js';
 import type { SourceMetadata } from '../domain/extraction/types.js';
 import type { FileAgentGraphStore } from '../store/agent-graph-store.js';
-import {
-  buildArcExplorerAddressUrl,
-  buildArcExplorerTransactionUrl,
-  isHexAddress,
-  isHexTransactionHash
-} from '../support/arc-explorer.js';
 
 type CreateGraphRouterOptions = {
   agentGraphStore: FileAgentGraphStore;
@@ -51,79 +45,6 @@ const renderEvidenceField = (
   `;
 };
 
-const renderGraphSvg = (session: AgentSession): string => {
-  const edges = session.graph.edges
-    .map((edge) => {
-      const source = session.graph.nodes.find((node) => node.id === edge.source);
-      const target = session.graph.nodes.find((node) => node.id === edge.target);
-
-      if (!source || !target) {
-        return '';
-      }
-
-      const labelX = Math.round((source.x + target.x) / 2);
-      const labelY = Math.round((source.y + target.y) / 2);
-
-      return `
-        <line x1="${source.x}" y1="${source.y}" x2="${target.x}" y2="${target.y}" stroke="#94a3b8" stroke-width="2" />
-        <text x="${labelX}" y="${labelY - 8}" text-anchor="middle" fill="#334155" font-size="12">${escapeHtml(edge.label)}</text>
-      `;
-    })
-    .join('');
-  const nodes = session.graph.nodes
-    .map(
-      (node) => `
-        <g>
-          <circle cx="${node.x}" cy="${node.y}" r="26" fill="${node.color}" opacity="0.92" />
-          <text x="${node.x}" y="${node.y + 42}" text-anchor="middle" fill="#0f172a" font-size="13">${escapeHtml(node.label)}</text>
-        </g>
-      `
-    )
-    .join('');
-
-  return `
-    <svg viewBox="0 0 480 440" role="img" aria-label="Knowledge graph">
-      <rect x="0" y="0" width="480" height="440" rx="24" fill="#f8fafc" />
-      ${edges}
-      ${nodes}
-    </svg>
-  `;
-};
-
-const renderRunCards = (session: AgentSession, runtimeEnv: RuntimeEnv): string => {
-  return session.runs
-    .map(
-      (run) => `
-        <article class="run-card">
-          <h3>${escapeHtml(run.operation)}</h3>
-          ${renderEvidenceField('requestId', run.requestId)}
-          <p><strong>price</strong>: ${escapeHtml(run.price)}</p>
-          ${renderEvidenceField('paymentTransaction', run.paymentTransaction)}
-          <p><strong>paymentAmount</strong>: ${escapeHtml(run.paymentAmount)}</p>
-          <p><strong>paymentNetwork</strong>: ${escapeHtml(run.paymentNetwork)}</p>
-          ${renderEvidenceField('paymentPayer', run.paymentPayer, isHexAddress(run.paymentPayer)
-            ? {
-                explorerUrl: buildArcExplorerAddressUrl(run.paymentPayer, runtimeEnv),
-                explorerLabel: '地址'
-              }
-            : {})}
-          ${renderEvidenceField('payloadHash', run.payloadHash)}
-          ${renderEvidenceField(
-            'receiptTxHash',
-            run.receiptTxHash ?? 'n/a',
-            isHexTransactionHash(run.receiptTxHash)
-              ? {
-                  explorerUrl: buildArcExplorerTransactionUrl(run.receiptTxHash, runtimeEnv),
-                  explorerLabel: '链上交易'
-                }
-              : {}
-          )}
-        </article>
-      `
-    )
-    .join('');
-};
-
 const formatImportMode = (importMode: string): string => {
   switch (importMode) {
     case 'manual':
@@ -163,10 +84,16 @@ const renderSourceMetadata = (session: AgentSession): string => {
   return `
     <div class="meta-card source-card">
       <strong>导入来源</strong>
-      ${renderEvidenceField('articleUrl', metadata.articleUrl ?? 'n/a', metadata.articleUrl ? {
-        explorerUrl: metadata.articleUrl,
-        explorerLabel: '原文'
-      } : {})}
+      ${renderEvidenceField(
+        'articleUrl',
+        metadata.articleUrl ?? 'n/a',
+        metadata.articleUrl
+          ? {
+              explorerUrl: metadata.articleUrl,
+              explorerLabel: '原文'
+            }
+          : {}
+      )}
       ${renderEvidenceField('sourceSite', metadata.sourceSite ?? 'n/a')}
       ${renderEvidenceField('importMode', metadata.importMode ? formatImportMode(metadata.importMode) : 'n/a')}
       ${renderEvidenceField('importStatus', metadata.importStatus ? formatImportStatus(metadata.importStatus) : 'n/a')}
@@ -176,7 +103,7 @@ const renderSourceMetadata = (session: AgentSession): string => {
   `;
 };
 
-const renderGraphPage = (session: AgentSession, runtimeEnv: RuntimeEnv): string => {
+const renderGraphPage = (session: AgentSession): string => {
   const graphNodes = JSON.stringify(
     session.graph.nodes.map((node) => ({
       id: node.id,
@@ -197,7 +124,7 @@ const renderGraphPage = (session: AgentSession, runtimeEnv: RuntimeEnv): string 
       value: edge.label,
       lineStyle: {
         type: edge.provenance === 'derived' ? 'dashed' : 'solid',
-        opacity: edge.provenance === 'derived' ? 0.64 : 0.88
+        opacity: edge.provenance === 'derived' ? 0.54 : 0.88
       }
     }))
   );
@@ -205,7 +132,7 @@ const renderGraphPage = (session: AgentSession, runtimeEnv: RuntimeEnv): string 
     ? session.relations
         .map((relation) => `<li>${escapeHtml(relation.source)} ${escapeHtml(relation.relation)} ${escapeHtml(relation.target)}</li>`)
         .join('')
-    : '<li>当前关系较弱，建议回到工作台结合原文与凭证继续复核。</li>';
+    : '<li>当前关系较弱，建议回到工作台结合关键判断与证据摘录继续复核。</li>';
 
   return `<!DOCTYPE html>
   <html lang="zh-CN">
@@ -216,8 +143,8 @@ const renderGraphPage = (session: AgentSession, runtimeEnv: RuntimeEnv): string 
       <style>
         :root {
           color-scheme: light;
-          --bg: #f1f5f9;
-          --panel: rgba(255, 255, 255, 0.94);
+          --bg: #eef2f7;
+          --panel: rgba(255, 255, 255, 0.95);
           --border: rgba(15, 23, 42, 0.12);
           --text: #0f172a;
           --muted: #475569;
@@ -226,17 +153,18 @@ const renderGraphPage = (session: AgentSession, runtimeEnv: RuntimeEnv): string 
         }
 
         * { box-sizing: border-box; }
+
         body {
           margin: 0;
           font-family: "Iowan Old Style", "Palatino Linotype", serif;
           color: var(--text);
           background:
             radial-gradient(circle at top left, rgba(15, 118, 110, 0.16), transparent 28rem),
-            linear-gradient(180deg, #e2e8f0 0%, var(--bg) 60%);
+            linear-gradient(180deg, #dde6ef 0%, var(--bg) 60%);
         }
 
         main {
-          max-width: 1480px;
+          max-width: 1320px;
           margin: 0 auto;
           padding: 24px 20px 56px;
         }
@@ -262,33 +190,27 @@ const renderGraphPage = (session: AgentSession, runtimeEnv: RuntimeEnv): string 
 
         .summary {
           color: var(--muted);
-          font-size: 17px;
+          font-size: 16px;
           line-height: 1.7;
-          max-width: 75ch;
+          max-width: 76ch;
         }
 
-        .meta {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-          gap: 14px;
-          margin-top: 20px;
-        }
-
-        .meta-card, .run-card {
-          background: rgba(248, 250, 252, 0.92);
-          border: 1px solid rgba(148, 163, 184, 0.26);
-          border-radius: 18px;
-          padding: 16px;
-        }
-
-        .source-card {
-          display: grid;
-          gap: 10px;
+        .return-link {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          margin-top: 12px;
+          padding: 10px 14px;
+          border-radius: 999px;
+          border: 1px solid rgba(15, 118, 110, 0.22);
+          background: rgba(15, 118, 110, 0.1);
+          color: var(--accent);
+          text-decoration: none;
         }
 
         .layout {
           display: grid;
-          grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.82fr);
+          grid-template-columns: minmax(0, 1.28fr) minmax(300px, 0.72fr);
           gap: 20px;
           align-items: start;
         }
@@ -305,7 +227,6 @@ const renderGraphPage = (session: AgentSession, runtimeEnv: RuntimeEnv): string 
 
         .graph-header h2,
         .side-stack h2,
-        .run-card h3,
         h1 {
           margin: 0;
         }
@@ -348,10 +269,16 @@ const renderGraphPage = (session: AgentSession, runtimeEnv: RuntimeEnv): string 
           line-height: 1.7;
         }
 
-        .run-grid {
+        .meta-card {
+          background: rgba(248, 250, 252, 0.92);
+          border: 1px solid rgba(148, 163, 184, 0.26);
+          border-radius: 18px;
+          padding: 16px;
+        }
+
+        .source-card {
           display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-          gap: 14px;
+          gap: 10px;
         }
 
         .evidence-field {
@@ -421,37 +348,22 @@ const renderGraphPage = (session: AgentSession, runtimeEnv: RuntimeEnv): string 
     <body>
       <main>
         <section class="hero">
-          <div class="eyebrow">知识图谱</div>
-          <h1>${escapeHtml(session.source.title ?? '未命名来源')}</h1>
-          <p><strong>sessionId</strong>: ${escapeHtml(session.sessionId)}</p>
-          <p class="summary">${escapeHtml(session.summary)}</p>
-          <div class="meta">
-            <div class="meta-card">
-              <strong>总成本</strong>
-              <p>${escapeHtml(session.totals.totalPrice)}</p>
-            </div>
-            <div class="meta-card">
-              <strong>成功调用</strong>
-              <p>${session.totals.successfulRuns}</p>
-            </div>
-            <div class="meta-card">
-              <strong>来源类型</strong>
-              <p>${escapeHtml(session.source.sourceType === 'news' ? '新闻 / 资讯' : session.source.sourceType)}</p>
-            </div>
-            ${renderSourceMetadata(session)}
-          </div>
+          <div class="eyebrow">辅助关系浏览器</div>
+          <h1>${escapeHtml(session.source.title ?? session.sessionId)}</h1>
+          <p class="summary">独立 graph 页面只负责关系浏览，不承担结果主阅读。需要完整结论时，请回到工作台沿“事件总览 -> 关键判断 -> 证据摘录”继续查看。</p>
+          <a class="return-link" href="/demo/live">返回工作台</a>
         </section>
 
         <section class="layout">
           <article class="panel">
             <div class="graph-header">
-              <div class="eyebrow">关系图</div>
-              <h2>实体与关系浏览</h2>
-              <p class="summary">使用 ECharts 渲染，支持滚轮缩放与拖动画布。original 来自抽取结果，derived 仅用于展示连通性。</p>
+              <div class="eyebrow">关系浏览器</div>
+              <h2>图谱画布</h2>
+              <p class="summary">使用 ECharts 渲染，支持滚轮缩放与拖动画布。derived 仅用于浏览连通性，不代表真实抽取关系。</p>
               <div class="hint-row">
                 <span class="hint-pill">滚轮缩放</span>
                 <span class="hint-pill">拖动画布</span>
-                <span class="hint-pill">derived 仅用于展示连通性</span>
+                <span class="hint-pill">derived 仅用于浏览连通性，不代表真实抽取关系</span>
               </div>
             </div>
             <div class="graph-surface">
@@ -469,19 +381,12 @@ const renderGraphPage = (session: AgentSession, runtimeEnv: RuntimeEnv): string 
                 </ul>
               </div>
               <div>
-                <div class="eyebrow">原文</div>
-                <h2>Source Text</h2>
-                <p class="summary">${escapeHtml(session.source.text)}</p>
+                <div class="eyebrow">来源元数据</div>
+                <h2>导入来源</h2>
+                ${renderSourceMetadata(session)}
               </div>
             </div>
           </article>
-        </section>
-
-        <section class="panel" style="margin-top: 20px;">
-          <h2>分析凭证</h2>
-          <div class="run-grid">
-            ${renderRunCards(session, runtimeEnv)}
-          </div>
         </section>
 
         <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
@@ -600,7 +505,7 @@ export const createGraphRouter = (options: CreateGraphRouterOptions) => {
       return;
     }
 
-    response.status(200).type('html').send(renderGraphPage(session, options.runtimeEnv));
+    response.status(200).type('html').send(renderGraphPage(session));
   });
 
   router.get('/:sessionId', async (request, response) => {
@@ -611,7 +516,7 @@ export const createGraphRouter = (options: CreateGraphRouterOptions) => {
       return;
     }
 
-    response.status(200).type('html').send(renderGraphPage(session, options.runtimeEnv));
+    response.status(200).type('html').send(renderGraphPage(session));
   });
 
   return router;

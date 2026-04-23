@@ -15,6 +15,19 @@ const weakSignalRequest: ExtractionRequest = {
   text: '今天星期三，天气不错，没啥特别的了。'
 };
 
+const denseSignalRequest: ExtractionRequest = {
+  sourceType: 'news',
+  title: 'Arc partners with Circle, Stripe and Solana in Singapore',
+  text: [
+    'Arc introduced gasless nanopayments for AI agents in Singapore.',
+    'Circle provides the settlement layer for USDC transfers.',
+    'Stripe supports merchant checkout for the rollout.',
+    'Solana processes onchain settlement for partner wallets.',
+    'OpenAI integrates the agent workflow into merchant operations.',
+    'Fireblocks secures treasury controls for the launch.'
+  ].join(' ')
+};
+
 describe('MockKnowledgeExtractionProvider', () => {
   it('should return stable structures for summary entities and relations', async () => {
     const provider = new MockKnowledgeExtractionProvider();
@@ -62,6 +75,41 @@ describe('MockKnowledgeExtractionProvider', () => {
     expect(relationsResult.relations.length).toBeGreaterThanOrEqual(1);
     expect(relationsResult.relations.length).toBeLessThanOrEqual(3);
     expect(relationsResult.relations.every((relation) => ['日期', '状态', '描述', '提到'].includes(relation.relation))).toBe(true);
+  });
+
+  it('should return denser entities and relations for strong-signal text without adding weak-signal noise', async () => {
+    const provider = new MockKnowledgeExtractionProvider();
+
+    const entitiesResult = await provider.extract('entities', denseSignalRequest);
+    const relationsResult = await provider.extract('relations', denseSignalRequest);
+
+    expect(entitiesResult.kind).toBe('entities');
+    if (entitiesResult.kind !== 'entities') {
+      throw new Error('Expected entities result.');
+    }
+    expect(entitiesResult.entities.length).toBeGreaterThanOrEqual(6);
+    expect(entitiesResult.entities.length).toBeLessThanOrEqual(8);
+    expect(entitiesResult.entities).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: 'Arc', type: 'organization' }),
+        expect.objectContaining({ name: 'Circle', type: 'organization' }),
+        expect.objectContaining({ name: 'Stripe', type: 'organization' }),
+        expect.objectContaining({ name: 'Solana', type: 'organization' }),
+        expect.objectContaining({ name: 'OpenAI', type: 'organization' }),
+        expect.objectContaining({ name: 'Fireblocks', type: 'organization' })
+      ])
+    );
+
+    expect(relationsResult.kind).toBe('relations');
+    if (relationsResult.kind !== 'relations') {
+      throw new Error('Expected relations result.');
+    }
+    expect(relationsResult.relations.length).toBeGreaterThanOrEqual(5);
+    expect(relationsResult.relations.length).toBeLessThanOrEqual(10);
+    expect(relationsResult.relations.every((relation) => relation.source !== relation.target)).toBe(true);
+    expect(relationsResult.relations.some((relation) => relation.source === 'Arc' && relation.target === 'Circle')).toBe(true);
+    expect(relationsResult.relations.some((relation) => relation.target === 'OpenAI')).toBe(true);
+    expect(relationsResult.relations.every((relation) => !['日期', '状态', '描述'].includes(relation.relation))).toBe(true);
   });
 });
 
