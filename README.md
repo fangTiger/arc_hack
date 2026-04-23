@@ -5,8 +5,8 @@
 - 批量 demo runner：走 `402 -> 付款 -> 重试` 的 app 级 buyer 流程，可批量生成调用记录与统计摘要
 - 真实 gateway buyer runner：使用官方 `GatewayClient.pay()` 对 seller 的 `POST /api/extract/*` 做真实 HTTP 支付
 - agent session runner：自动串行执行 `summary`、`entities`、`relations` 三次付费工具调用
-- graph 演示页面：`GET /demo/graph/latest` 与 `GET /demo/graph/:sessionId`
-- live console 页面：`GET /demo/live`，支持“文章链接 / 手动文本 / 预置卡片”三种输入模式，并同页展示 live session 阶段、证据和最终图谱
+- graph 辅助关系浏览器：`GET /demo/graph/latest` 与 `GET /demo/graph/:sessionId`
+- 资讯分析工作台页面：`GET /demo/live`，支持“文章链接 / 手动文本 / 预置卡片”三种输入模式，并同页完成状态感知、主结论阅读、证据复核与辅助关系浏览
 - `UsageReceipt` 合约：为成功调用补充 Arc 侧 receipt 凭证
 
 ## 当前能力
@@ -16,7 +16,7 @@
 - buyer 真实联调走独立脚本 `scripts/gateway-buyer-runner.ts`，产物默认写入 `artifacts/gateway-run/`
 - agent graph 产物固定写入 `artifacts/agent-graph/<sessionId>/session.json`
 - live console 状态固定写入 `artifacts/live-console/<sessionId>/live-session.json`
-- graph 页面直接读取本地 artifact，不引入额外前端构建；如 source metadata 存在，会展示 `articleUrl`、`sourceSite`、导入标题、`importMode`、`importStatus` 与 `cachedAt`，并说明 `derived` 仅用于连通性展示
+- graph 页面直接读取本地 artifact，不引入额外前端构建；它被定位为“辅助关系浏览器”，如 source metadata 存在，会展示 `articleUrl`、`sourceSite`、导入标题、`importMode`、`importStatus` 与 `cachedAt`，并说明 `derived` 仅用于连通性展示
 - 白名单新闻来源导入目前只支持 `wublock123`、`PANews`、`ChainCatcher`
 - 预置新闻卡片使用本地缓存导入结果，脱网也能演示
 - 可选 `CIRCLE_GATEWAY_NETWORKS` 与 `CIRCLE_GATEWAY_FACILITATOR_URL` 用于本地或测试环境缩小 gateway 入口范围
@@ -49,20 +49,20 @@ http://127.0.0.1:3000/demo/live
 http://127.0.0.1:3000/demo/graph/latest
 ```
 
-live console 当前支持：
+工作台当前支持：
 - `文章链接`：提交白名单站点原文链接，后端先导入再创建 session
 - `手动文本`：直接提交本地文本
 - `预置卡片`：提交缓存好的新闻文本与 metadata，不依赖实时抓取远端网页
 - 当链接导入命中缓存回退时，页面会显示 `导入状态：缓存回退` 与 `缓存时间`
 
-如果要录制 live console：
+如果要录制工作台流程：
 ```bash
 npm run dev
 open http://127.0.0.1:3000/demo/live
 ```
 
 说明：
-- 推荐录屏路径：先点一次预置卡片证明脱网可演示，再切到 graph 页面展示来源元数据、`importStatus` / `cachedAt` 和 `derived` 说明，最后补一条白名单链接模式
+- 推荐录屏路径：先点一次预置卡片证明脱网可运行，再在主区展示 `事件总览 -> 关键判断 -> 证据摘录` 的连续链路，然后切到 graph 页面展示来源元数据、`importStatus` / `cachedAt` 和 `derived` 说明，最后补一条白名单链接模式
 - `PAYMENT_MODE=mock` 时，页面会逐步展示 `summary -> entities -> relations`
 - `PAYMENT_MODE=gateway` 时，页面只保证整体状态和最终证据，不承诺逐步 payment 回调
 - 若已有 `queued` 或 `running` 的 live session，再次创建会返回 `409` 和当前 `sessionId`

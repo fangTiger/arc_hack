@@ -274,44 +274,7 @@ ANALYZE → DESIGN     → HANDOFF   → IMPLEMENT       → REVIEW          →
 ## LastVerificationResult: [PASS/FAIL/PENDING]
 ## CompletedTasks: [list]
 ## NextPromptSeed: [next handoff prompt]
-```
-
-### 7.1 并行任务隔离规则（强制）
-
-当仓库内存在 2 个及以上活跃任务时，默认规则如下：
-
-1. **一个任务一个 worktree**
-2. **每个 worktree 只维护自己的 `.codex/session-state.md`**
-3. **禁止多个并行任务共享同一个 worktree 下的 `.codex/session-state.md`**
-4. **未切到独立 worktree 前，不进入新的中/大任务 IMPLEMENT 阶段**
-
-### 7.2 worktree 使用约定（强制）
-
-并行任务或需要隔离上下文的任务，必须优先使用 `superpowers:using-git-worktrees`。
-
-推荐顺序：
-
-1. 检查项目内是否已有 `.worktrees/` 或 `worktrees/`
-2. 如没有，则优先创建 `.worktrees/`
-3. 若使用项目内 worktree 目录，必须确保该目录已加入 `.gitignore`
-4. 新任务在新 worktree 中启动独立 Codex 会话
-5. 该会话只更新自己 worktree 下的 `.codex/session-state.md`
-
-### 7.3 冲突避免规则（强制）
-
-如果发现以下任一情况，必须停止直接覆盖当前 `.codex/session-state.md`：
-
-- 文件中的 `CurrentTask` 明显属于其他任务
-- 当前 worktree 已有其他进行中的实现任务
-- 用户明确说明另一个任务正在并行执行
-
-此时应执行：
-
-1. 创建或切换到独立 worktree
-2. 在新 worktree 中初始化该任务自己的 `.codex/session-state.md`
-3. 再继续当前任务
-
----
+```---
 
 ## 8. 工具使用规范
 
@@ -326,41 +289,4 @@ ANALYZE → DESIGN     → HANDOFF   → IMPLEMENT       → REVIEW          →
 - 默认不做大规模编码
 - 必要时可做小范围修补或降级接管
 
-### 8.3 Gemini（可选）
-- 前端任务或复杂架构复审时按需介入
-- 默认不是必经流程
-
 ---
-
-## 9. 语言规范
-
-- **文档**：中文
-- **代码注释**：中文
-- **代码标识符**：英文
-- **配置文件**：键名英文，注释中文
-- **日志/沟通**：中文
-
----
-
-*Mode: codex-codex-dev — Outer Codex Orchestrates + Inner Codex Implements + Optional Gemini Review*
-*Canonical rules live here. CLAUDE.md is compatibility bridge only.*
-
----
-
----
-
-## 10. 入口约定
-
-`codex-codex-dev` 的推荐启动命令为：
-
-```bash
-/Users/captain/project/yonyou/ontologyDevOS/scripts/switch-plugin.sh codex-codex-dev
-```
-
-进入该模式后，项目入口约定如下：
-
-- 项目根存在 `AGENTS.md`
-- `.codex/instructions.md` 作为 Codex 专用指令入口
-- 按当前插件模式加载 `codex-codex-dev` 主控规则
-
-如需在独立 worktree 中开启并行任务，也应在对应 worktree 目录执行同一条命令。

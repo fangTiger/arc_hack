@@ -7,8 +7,15 @@ import {
   getDisplaySourceTitle,
   getGraphPresentationMode,
   inferEventType,
+  shouldAcceptLiveSnapshot,
   type LiveWorkbenchSessionLike
 } from '../src/routes/live-workbench.js';
+
+const supportedSourceLabels = {
+  panews: 'PANews',
+  wublock123: '吴说',
+  chaincatcher: 'ChainCatcher'
+} as const;
 
 const createSteps = (
   summary: 'pending' | 'running' | 'completed' | 'failed',
@@ -21,7 +28,10 @@ const createSteps = (
 ];
 
 const createSession = (overrides: Partial<LiveWorkbenchSessionLike> = {}): LiveWorkbenchSessionLike => ({
+  sessionId: 'session-001',
   status: 'completed',
+  createdAt: '2026-04-23T09:59:00.000Z',
+  updatedAt: '2026-04-23T10:00:00.000Z',
   source: {
     sourceType: 'news',
     title: 'PANews：某协议完成 5000 万美元融资',
@@ -50,6 +60,68 @@ const createSession = (overrides: Partial<LiveWorkbenchSessionLike> = {}): LiveW
 });
 
 describe('live workbench view model', () => {
+  it('should protect terminal snapshots from older queued or running responses', () => {
+    const completedSession = createSession({
+      sessionId: 'session-terminal',
+      status: 'completed',
+      updatedAt: '2026-04-23T10:03:00.000Z'
+    });
+    const staleRunningSession = createSession({
+      sessionId: 'session-terminal',
+      status: 'running',
+      updatedAt: '2026-04-23T10:01:00.000Z',
+      steps: createSteps('running', 'pending', 'pending'),
+      preview: {}
+    });
+    const staleQueuedSession = createSession({
+      sessionId: 'session-terminal',
+      status: 'queued',
+      updatedAt: '2026-04-23T10:00:30.000Z',
+      steps: createSteps('pending', 'pending', 'pending'),
+      preview: {}
+    });
+
+    expect(shouldAcceptLiveSnapshot(completedSession, staleRunningSession)).toBe(false);
+    expect(shouldAcceptLiveSnapshot(completedSession, staleQueuedSession)).toBe(false);
+  });
+
+  it('should let a terminal snapshot override a non-terminal snapshot for the same session', () => {
+    const runningSession = createSession({
+      sessionId: 'session-terminal-priority',
+      status: 'running',
+      updatedAt: '2026-04-23T10:03:00.000Z',
+      steps: createSteps('running', 'pending', 'pending'),
+      preview: {}
+    });
+    const completedSession = createSession({
+      sessionId: 'session-terminal-priority',
+      status: 'completed',
+      updatedAt: '2026-04-23T10:02:00.000Z'
+    });
+
+    expect(shouldAcceptLiveSnapshot(runningSession, completedSession)).toBe(true);
+  });
+
+  it('should remain self-contained when serialized into the browser poller', () => {
+    const runningSession = createSession({
+      sessionId: 'session-terminal-priority',
+      status: 'running',
+      updatedAt: '2026-04-23T10:03:00.000Z',
+      steps: createSteps('running', 'pending', 'pending'),
+      preview: {}
+    });
+    const completedSession = createSession({
+      sessionId: 'session-terminal-priority',
+      status: 'completed',
+      updatedAt: '2026-04-23T10:02:00.000Z'
+    });
+    const serialized = shouldAcceptLiveSnapshot.toString();
+    const browserSafeFunction = new Function(`return (${serialized});`)() as typeof shouldAcceptLiveSnapshot;
+
+    expect(browserSafeFunction(runningSession, completedSession)).toBe(true);
+    expect(browserSafeFunction(completedSession, runningSession)).toBe(false);
+  });
+
   it('should not classify amount-only market news as financing', () => {
     const session = createSession({
       source: {
@@ -107,6 +179,16 @@ describe('live workbench view model', () => {
     expect(buildJudgments(session)).toEqual([]);
   });
 
+  it('should expose pending-import page-state copy before any session starts', () => {
+    const viewModel = createLiveWorkbenchViewModel(null, supportedSourceLabels);
+
+    expect(viewModel.headline).toBe('等待分析开始');
+    expect(viewModel.summary).toContain('待导入');
+    expect(viewModel.summary).toContain('导入仓');
+    expect(viewModel.eventTypeValue).toBe('待识别');
+    expect(viewModel.sourceModeValue).toBe('待输入');
+  });
+
   it('should gate entity and relation judgments until their steps complete', () => {
     const session = createSession({
       status: 'running',
@@ -128,6 +210,127 @@ describe('live workbench view model', () => {
     expect(judgments[0]?.title).toContain('初步归类');
   });
 
+  it('should retain the previous completed result while a re-run is still in progress', () => {
+    const session = createSession({
+      status: 'running',
+      steps: createSteps('running', 'pending', 'pending'),
+      preview: {},
+      agentSession: {
+        summary: '上一版结果显示某协议完成融资，并引入 Arc 与 Circle 作为关键结算主体。',
+        entities: [
+          { name: 'Arc', type: 'organization' },
+          { name: 'Circle', type: 'organization' }
+        ],
+        relations: [{ source: 'Arc', relation: 'partners_with', target: 'Circle' }],
+        totals: {
+          totalPrice: '$0.012',
+          successfulRuns: 3
+        }
+      }
+    });
+
+    const viewModel = createLiveWorkbenchViewModel(session, supportedSourceLabels);
+
+    expect(viewModel.summary).toContain('分析中');
+    expect(viewModel.summary).toContain('旧结果');
+    expect(viewModel.judgments).toHaveLength(3);
+    expect(viewModel.judgments[0]?.title).toContain('初步归类');
+    expect(viewModel.evidenceSectionNote).toContain('上一版');
+  });
+
+  it('should keep the retained-result headline during a manual re-run without a source title', () => {
+    const session = createSession({
+      status: 'running',
+      source: {
+        sourceType: 'research',
+        text: 'Arc introduced gasless nanopayments for AI agents. Circle provides the settlement layer.',
+        metadata: {
+          importMode: 'manual'
+        }
+      },
+      steps: createSteps('running', 'pending', 'pending'),
+      preview: {},
+      agentSession: {
+        summary: 'Arc 为 AI 代理引入无 gas 小额支付，并接入 Circle 作为结算层。',
+        entities: [
+          { name: 'Arc', type: 'organization' },
+          { name: 'Circle', type: 'organization' }
+        ],
+        relations: [{ source: 'Arc', relation: 'partners_with', target: 'Circle' }],
+        totals: {
+          totalPrice: '$0.012',
+          successfulRuns: 3
+        }
+      }
+    });
+
+    const viewModel = createLiveWorkbenchViewModel(session, supportedSourceLabels);
+
+    expect(viewModel.headline).toBe('Arc 为 AI 代理引入无 gas 小额支付，并接入 Circle 作为结算层');
+    expect(viewModel.headline).not.toBe('等待事件判断生成');
+    expect(viewModel.headline).not.toBe('分析未完成');
+  });
+
+  it('should keep the previous completed result visible when the re-run fails', () => {
+    const session = createSession({
+      status: 'failed',
+      steps: createSteps('failed', 'pending', 'pending'),
+      preview: {},
+      agentSession: {
+        summary: '上一版结果显示某协议完成融资，并引入 Arc 与 Circle 作为关键结算主体。',
+        entities: [
+          { name: 'Arc', type: 'organization' },
+          { name: 'Circle', type: 'organization' }
+        ],
+        relations: [{ source: 'Arc', relation: 'partners_with', target: 'Circle' }],
+        totals: {
+          totalPrice: '$0.012',
+          successfulRuns: 3
+        }
+      }
+    });
+
+    const viewModel = createLiveWorkbenchViewModel(session, supportedSourceLabels);
+
+    expect(viewModel.summary).toContain('分析失败');
+    expect(viewModel.summary).toContain('旧结果');
+    expect(viewModel.judgments).toHaveLength(3);
+    expect(viewModel.evidenceSectionNote).toContain('失败反馈');
+  });
+
+  it('should keep the retained-result headline after a manual re-run fails', () => {
+    const session = createSession({
+      status: 'failed',
+      source: {
+        sourceType: 'research',
+        text: 'Arc introduced gasless nanopayments for AI agents. Circle provides the settlement layer.',
+        metadata: {
+          importMode: 'manual'
+        }
+      },
+      steps: createSteps('failed', 'pending', 'pending'),
+      preview: {},
+      agentSession: {
+        summary: 'Arc 为 AI 代理引入无 gas 小额支付，并接入 Circle 作为结算层。',
+        entities: [
+          { name: 'Arc', type: 'organization' },
+          { name: 'Circle', type: 'organization' }
+        ],
+        relations: [{ source: 'Arc', relation: 'partners_with', target: 'Circle' }],
+        totals: {
+          totalPrice: '$0.012',
+          successfulRuns: 3
+        }
+      }
+    });
+
+    const viewModel = createLiveWorkbenchViewModel(session, supportedSourceLabels);
+
+    expect(viewModel.headline).toBe('Arc 为 AI 代理引入无 gas 小额支付，并接入 Circle 作为结算层');
+    expect(viewModel.headline).not.toBe('等待事件判断生成');
+    expect(viewModel.headline).not.toBe('分析未完成');
+  });
+
   it('should downgrade evidence wording to manual-review language', () => {
     const session = createSession({
       source: {
@@ -143,11 +346,7 @@ describe('live workbench view model', () => {
       }
     });
 
-    const viewModel = createLiveWorkbenchViewModel(session, {
-      panews: 'PANews',
-      wublock123: '吴说',
-      chaincatcher: 'ChainCatcher'
-    });
+    const viewModel = createLiveWorkbenchViewModel(session, supportedSourceLabels);
 
     expect(viewModel.eventTypeValue).toContain('初步归类');
     expect(viewModel.evidenceSectionNote).toContain('人工复核');
@@ -166,11 +365,7 @@ describe('live workbench view model', () => {
       }
     });
 
-    const viewModel = createLiveWorkbenchViewModel(session, {
-      panews: 'PANews',
-      wublock123: '吴说',
-      chaincatcher: 'ChainCatcher'
-    });
+    const viewModel = createLiveWorkbenchViewModel(session, supportedSourceLabels);
     const judgments = buildJudgments(session);
 
     expect(viewModel.entityStepStatus).toBe('completed');
@@ -196,13 +391,9 @@ describe('live workbench view model', () => {
 
     expect(getDisplaySourceTitle(session)).toBe('Arc 为 AI 代理引入无 gas 小额支付，并接入 Circle 作为结算层');
     expect(getDisplayHeadline(session)).toBe('事件判断已生成');
-    expect(
-      createLiveWorkbenchViewModel(session, {
-        panews: 'PANews',
-        wublock123: '吴说',
-        chaincatcher: 'ChainCatcher'
-      }).summary
-    ).toBe('正文分析已完成，可在下方查看关键判断与证据摘录。');
+    expect(createLiveWorkbenchViewModel(session, supportedSourceLabels).summary).toBe(
+      '正文分析已完成，可在下方查看关键判断与证据摘录。'
+    );
   });
 
   it('should hide manual source text from the event overview before summary completes', () => {
@@ -221,11 +412,7 @@ describe('live workbench view model', () => {
       preview: {}
     });
 
-    const viewModel = createLiveWorkbenchViewModel(session, {
-      panews: 'PANews',
-      wublock123: '吴说',
-      chaincatcher: 'ChainCatcher'
-    });
+    const viewModel = createLiveWorkbenchViewModel(session, supportedSourceLabels);
 
     expect(getDisplayHeadline(session)).toBe('等待事件判断生成');
     expect(viewModel.headline).toBe('等待事件判断生成');
@@ -247,11 +434,7 @@ describe('live workbench view model', () => {
       }
     });
 
-    const viewModel = createLiveWorkbenchViewModel(session, {
-      panews: 'PANews',
-      wublock123: '吴说',
-      chaincatcher: 'ChainCatcher'
-    });
+    const viewModel = createLiveWorkbenchViewModel(session, supportedSourceLabels);
 
     expect(viewModel.briefing.length).toBeLessThan(longSummary.length);
     expect(viewModel.briefing).toContain('某协议完成新一轮战略合作');
@@ -262,6 +445,51 @@ describe('live workbench view model', () => {
     );
   });
 
+  it('should enrich judgment detail payloads with source status and evidence context', () => {
+    const session = createSession({
+      source: {
+        sourceType: 'news',
+        title: 'PANews：某协议完成 5000 万美元融资',
+        text: [
+          'PANews 4 月 22 日消息，某协议宣布完成 5000 万美元融资。',
+          'Arc 将负责代理支付编排，并与 Circle 共同提供结算能力。',
+          '团队表示，新资金将优先用于扩展亚洲市场和合规建设。',
+          '管理层预计第三季度发布面向机构客户的新产品线。'
+        ].join(' '),
+        metadata: {
+          articleUrl: 'https://www.panewslab.com/articles/0123456789',
+          sourceSite: 'panews',
+          importMode: 'link',
+          importStatus: 'cache',
+          cachedAt: '2026-04-22T11:22:33.000Z'
+        }
+      },
+      preview: {
+        summary: '某协议完成 5000 万美元融资，并引入 Arc 与 Circle 作为结算与支付编排伙伴。',
+        entities: [
+          { name: 'Arc', type: 'organization' },
+          { name: 'Circle', type: 'organization' }
+        ],
+        relations: [{ source: 'Arc', relation: 'partners_with', target: 'Circle' }]
+      }
+    });
+
+    const viewModel = createLiveWorkbenchViewModel(session, supportedSourceLabels);
+
+    expect(viewModel.judgments[0]?.detailTags).toEqual(expect.arrayContaining(['融资（初步归类）', '重要性 高']));
+    expect(viewModel.judgments[0]?.detailSourceStatus).toBe('PANews · 白名单链接 · 缓存回退');
+    expect(viewModel.judgments[1]?.evidenceDetail).toMatchObject({
+      currentQuote: 'Arc 将负责代理支付编排，并与 Circle 共同提供结算能力。',
+      previousQuote: 'PANews 4 月 22 日消息，某协议宣布完成 5000 万美元融资。',
+      nextQuote: '团队表示，新资金将优先用于扩展亚洲市场和合规建设。',
+      sourceSite: 'PANews',
+      importModeLabel: '白名单链接',
+      importStatusLabel: '缓存回退',
+      cachedAt: '2026-04-22T11:22:33.000Z',
+      articleUrl: 'https://www.panewslab.com/articles/0123456789'
+    });
+  });
+
   it('should downgrade running gateway copy to batch replay language', () => {
     const session = createSession({
       mode: 'gateway',
@@ -270,11 +498,7 @@ describe('live workbench view model', () => {
       preview: {}
     });
 
-    const viewModel = createLiveWorkbenchViewModel(session, {
-      panews: 'PANews',
-      wublock123: '吴说',
-      chaincatcher: 'ChainCatcher'
-    });
+    const viewModel = createLiveWorkbenchViewModel(session, supportedSourceLabels);
 
     expect(viewModel.summary).toContain('批量支付与结果处理进行中');
   });
