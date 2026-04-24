@@ -406,6 +406,7 @@ describe('createLiveRouter', () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.headers['content-type']).toContain('image/png');
+    expect(response.text.length).toBeGreaterThan(0);
   });
 
   it('should create a live session, expose latest and detail endpoints, and return 404 when latest is missing', async () => {

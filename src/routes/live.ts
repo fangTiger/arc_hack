@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import type { Response } from 'express';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 
 import type { RuntimeEnv } from '../config/env.js';
 import { demoCorpus } from '../demo/corpus.js';
@@ -95,7 +95,7 @@ const SUPPORTED_IMPORT_MODES = new Set<SourceImportMode>(['manual', 'link', 'pre
 const SUPPORTED_IMPORT_STATUSES = new Set<SourceMetadata['importStatus']>(['live', 'cache']);
 const LIVE_PRODUCT_BASE_PATH = '/arc/sd/live';
 const LIVE_BRAND_LOGO_URL = `${LIVE_PRODUCT_BASE_PATH}/brand/logo.png`;
-const LIVE_BRAND_LOGO_PATH = fileURLToPath(new URL('../../docs/pic/logo.png', import.meta.url));
+const LIVE_BRAND_LOGO_PATH = join(process.cwd(), 'docs', 'pic', 'logo.png');
 
 const escapeHtml = (value: string): string => {
   return value
