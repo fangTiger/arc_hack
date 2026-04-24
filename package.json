@@ -12,7 +12,7 @@
     "demo:agent:mock": "PAYMENT_MODE=mock DEMO_ARTIFACT_DIR=artifacts/agent-graph node --import tsx scripts/agent-graph-runner.ts",
     "demo:agent:gateway": "PAYMENT_MODE=gateway DEMO_ARTIFACT_DIR=artifacts/agent-graph node --import tsx scripts/agent-graph-runner.ts",
     "demo:gateway:buyer": "DEMO_ARTIFACT_DIR=artifacts/gateway-run node --import tsx scripts/gateway-buyer-runner.ts",
-    "start": "node dist/server.js",
+    "start": "node dist/src/server.js",
     "test": "vitest",
     "test:contracts": "forge test"
   },
