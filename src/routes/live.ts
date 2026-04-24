@@ -30,6 +30,7 @@ import {
   getDisplaySourceTitle,
   getDisplaySource,
   getEntities,
+  getCurrentObjectCardTone,
   getPageStateSummary,
   getPhaseLabel,
   getGraphPresentationMode,
@@ -38,7 +39,6 @@ import {
   getStepStatus,
   getSummary,
   getTotalPrice,
-  hasRetainedWorkbenchResult,
   hasStableWorkbenchResult,
   inferEventType,
   inferImportance,
@@ -1445,9 +1445,12 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv, presets: LiveNewsPreset[]
           padding: 22px;
         }
 
-        .graph-modal-preview {
-          min-height: 0;
-          margin-top: 0;
+        .graph-modal-frame {
+          width: 100%;
+          min-height: min(72vh, 820px);
+          border: 0;
+          border-radius: 22px;
+          background: transparent;
         }
 
         .graph-modal-canvas {
@@ -1574,13 +1577,6 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv, presets: LiveNewsPreset[]
         .copy-button:disabled {
           opacity: 0.7;
           cursor: default;
-        }
-
-        .graph-page-link {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          text-decoration: none;
         }
 
         .workbench-top {
@@ -2978,11 +2974,11 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv, presets: LiveNewsPreset[]
               <div>
                 <div class="section-kicker">导航展开</div>
                 <h2 id="graph-modal-title">关系导航</h2>
-                <p class="mode-note">在站内放大查看主体关系，支持滚轮和按钮缩放，不再跳到独立 URL 页面。</p>
+                <p class="mode-note">在站内弹窗查看主体关系，支持滚轮和按钮缩放，不再跳到独立 URL 页面。</p>
               </div>
               <button id="graph-modal-close" class="secondary" type="button">关闭</button>
             </div>
-            <section id="graph-modal-preview" class="graph-preview graph-surface graph-modal-preview" aria-live="polite"></section>
+            <iframe id="graph-modal-frame" class="graph-modal-frame" title="关系导航" loading="lazy"></iframe>
           </section>
         </div>
       </main>
@@ -3002,7 +2998,6 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv, presets: LiveNewsPreset[]
           graphModalChart: null,
           graphModalZoom: 1,
           lastSession: null,
-          stableResultSession: null,
           displaySession: null,
           acceptedSnapshotMeta: null,
           lastTerminalSnapshotMeta: null
@@ -3026,7 +3021,6 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv, presets: LiveNewsPreset[]
         };
         const receiptMode = ${JSON.stringify(runtimeEnv.receiptMode)};
         const themeStorageKey = 'live-workbench-theme';
-        const graphZoomStep = 0.15;
         const graphZoomMin = 0.7;
         const graphZoomMax = 2.4;
         const __name = (target, _value) => target;
@@ -3065,7 +3059,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv, presets: LiveNewsPreset[]
         const graphModal = document.getElementById('graph-modal');
         const graphModalScrim = document.getElementById('graph-modal-scrim');
         const graphModalClose = document.getElementById('graph-modal-close');
-        const graphModalPreview = document.getElementById('graph-modal-preview');
+        const graphModalFrame = document.getElementById('graph-modal-frame');
         const explorerBaseUrl = ${JSON.stringify(getArcExplorerBaseUrl(runtimeEnv))};
         const formMessage = document.getElementById('form-message');
         const inputModeInput = document.getElementById('input-mode-input');
@@ -3167,12 +3161,12 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv, presets: LiveNewsPreset[]
         ${getDisplaySource.toString()}
         ${getTotalPrice.toString()}
         ${getGraphPresentationMode.toString()}
+        ${getCurrentObjectCardTone.toString()}
         ${buildPreviewText.toString()}
         ${buildDetailSourceStatus.toString()}
         ${buildEvidenceDetail.toString()}
         ${buildJudgments.toString()}
         ${hasStableWorkbenchResult.toString()}
-        ${hasRetainedWorkbenchResult.toString()}
         ${shouldAcceptLiveSnapshot.toString()}
         ${getPhaseLabel.toString()}
         ${getPageStateSummary.toString()}
@@ -3276,25 +3270,6 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv, presets: LiveNewsPreset[]
           }
         };
 
-        const updateModalGraphZoom = (nextZoom) => {
-          state.graphModalZoom = clampGraphZoom(nextZoom);
-          syncGraphZoomLabel(graphModalPreview, state.graphModalZoom);
-          syncGraphListZoom(graphModalPreview, state.graphModalZoom);
-
-          if (!state.graphModalChart) {
-            return;
-          }
-
-          state.graphModalChart.setOption({
-            series: [
-              {
-                id: 'relationship-graph',
-                zoom: state.graphModalZoom
-              }
-            ]
-          });
-        };
-
         const renderCopyableField = (label, value, options = {}) => {
           const normalizedValue = value ?? 'n/a';
           const copyButton = normalizedValue === 'n/a'
@@ -3320,47 +3295,6 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv, presets: LiveNewsPreset[]
             <div class="metric-value">\${escapeText(value)}</div>
           </article>
         \`;
-
-        const cloneSession = (session) => {
-          if (!session) {
-            return null;
-          }
-
-          return JSON.parse(JSON.stringify(session));
-        };
-
-        const createDisplaySession = (session, stableResultSession) => {
-          if (!session) {
-            return null;
-          }
-
-          if (!stableResultSession || stableResultSession.sessionId === session.sessionId) {
-            return session;
-          }
-
-          if ((session.status !== 'running' && session.status !== 'failed') || hasStableWorkbenchResult(session)) {
-            return session;
-          }
-
-          const retainedPreview = stableResultSession.preview ?? {
-            summary: stableResultSession.agentSession?.summary,
-            entities: stableResultSession.agentSession?.entities,
-            relations: stableResultSession.agentSession?.relations
-          };
-
-          return {
-            ...cloneSession(stableResultSession),
-            sessionId: session.sessionId,
-            status: session.status,
-            mode: session.mode,
-            error: session.error,
-            graphUrl: session.graphUrl ?? stableResultSession.graphUrl,
-            source: cloneSession(session.source ?? stableResultSession.source),
-            steps: cloneSession(session.steps ?? []),
-            preview: cloneSession(retainedPreview),
-            agentSession: cloneSession(stableResultSession.agentSession)
-          };
-        };
 
         const parseDetailPayload = (value) => {
           try {
@@ -3396,6 +3330,10 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv, presets: LiveNewsPreset[]
 
           graphModal.classList.add('hidden');
           graphModal.setAttribute('aria-hidden', 'true');
+
+          if (graphModalFrame) {
+            graphModalFrame.removeAttribute('src');
+          }
         };
 
         const closeDetailPanel = () => {
@@ -3544,20 +3482,10 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv, presets: LiveNewsPreset[]
             ?? session?.steps?.filter((step) => step.status === 'completed').length
             ?? 0;
           const hasSource = Boolean(session?.source?.text?.trim() || session?.source?.metadata?.articleUrl);
-          const summaryStatus = getStepStatus(session, 'summary');
           const pageTone = workbenchModel.pageStateTone;
 
           return {
-            currentObject:
-              !session
-                ? 'idle'
-                : summaryStatus === 'completed'
-                  ? 'completed'
-                  : pageTone === 'failed'
-                    ? 'failed'
-                    : pageTone === 'running'
-                      ? 'running'
-                      : 'ready',
+            currentObject: getCurrentObjectCardTone(session, pageTone),
             sourceStatus:
               !hasSource
                 ? 'idle'
@@ -3788,7 +3716,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv, presets: LiveNewsPreset[]
             workbenchModel.phaseLabel,
             workbenchModel.sourceStatusValue,
             workbenchModel.credentialStatusValue,
-            workbenchModel.hasRetainedResult ? '旧结果保留中' : '当前结果已接管工作台'
+            workbenchModel.pageStateTone === 'completed' ? '当前结果已接管工作台' : '当前轮次进行中'
           ]
             .filter(Boolean)
             .map((entry) => \`<span class="meta-pill">\${escapeText(entry)}</span>\`)
@@ -3903,7 +3831,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv, presets: LiveNewsPreset[]
           }
         };
 
-        const buildGraphCardHeader = (expandable, zoomable = false, graphUrl = '') => \`
+        const buildGraphCardHeader = (expandable, zoomable = false) => \`
             <div class="graph-preview-header">
               <div class="graph-preview-meta">
                 <div class="stage-label">关系导航</div>
@@ -3913,8 +3841,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv, presets: LiveNewsPreset[]
                 \${zoomable
                   ? '<button type="button" class="copy-button graph-zoom-button" data-graph-zoom="out" aria-label="缩小图谱">-</button><span id="graph-zoom-label" class="graph-zoom-label">100%</span><button type="button" class="copy-button graph-zoom-button" data-graph-zoom="in" aria-label="放大图谱">+</button><button type="button" class="copy-button graph-zoom-button" data-graph-zoom="reset" aria-label="重置图谱">重置</button>'
                   : ''}
-                \${expandable ? '<button type="button" class="copy-button graph-expand-button" data-graph-expand="true" data-testid="graph-expand-button">展开关系导航</button>' : ''}
-                \${expandable && graphUrl ? '<a class="copy-button graph-page-link" data-testid="graph-page-link" href="' + escapeText(graphUrl) + '">打开独立关系页</a>' : ''}
+                \${expandable ? '<button type="button" class="copy-button graph-expand-button" data-graph-expand="true" data-testid="graph-expand-button" aria-label="弹窗查看关系导航" title="弹窗查看关系导航">弹窗</button>' : ''}
               </div>
             </div>
         \`;
@@ -3923,12 +3850,11 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv, presets: LiveNewsPreset[]
           const chartKey = options.chartKey ?? 'graphChart';
           const expandable = Boolean(options.expandable);
           const zoomable = Boolean(options.zoomable);
-          const graphUrl = options.graphUrl ?? '';
           const graphZoom = zoomable ? state.graphModalZoom : 1;
 
           disposeGraphChart(chartKey);
           container.innerHTML = \`
-            \${buildGraphCardHeader(expandable, zoomable, graphUrl)}
+            \${buildGraphCardHeader(expandable, zoomable)}
             <div class="graph-list \${zoomable ? 'zoomable' : ''}">
               <div class="graph-list-body" style="\${zoomable ? '--graph-list-zoom:' + graphZoom + ';' : ''}">
                 <div>
@@ -3961,7 +3887,6 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv, presets: LiveNewsPreset[]
           const canvasClass = options.canvasClass ?? 'graph-canvas';
           const expandable = Boolean(options.expandable);
           const zoomable = Boolean(options.zoomable);
-          const graphUrl = options.graphUrl ?? '';
 
           if (!session?.agentSession?.graph) {
             disposeGraphChart(chartKey);
@@ -3974,7 +3899,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv, presets: LiveNewsPreset[]
           const graphMode = getGraphPresentationMode(session);
 
           if (graphMode === 'list') {
-            renderGraphList(container, nodes, edges, { chartKey, expandable, zoomable, graphUrl });
+            renderGraphList(container, nodes, edges, { chartKey, expandable, zoomable });
             return;
           }
 
@@ -3985,14 +3910,14 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv, presets: LiveNewsPreset[]
           }
 
           container.innerHTML = \`
-            \${buildGraphCardHeader(expandable, zoomable, graphUrl)}
+            \${buildGraphCardHeader(expandable, zoomable)}
             <div id="\${canvasId}" class="\${canvasClass}" role="img" aria-label="Auxiliary relationship graph"></div>
           \`;
 
           const graphCanvas = document.getElementById(canvasId);
 
           if (!graphCanvas || !window.echarts) {
-            renderGraphList(container, nodes, edges, { chartKey, expandable, zoomable, graphUrl });
+            renderGraphList(container, nodes, edges, { chartKey, expandable, zoomable });
             return;
           }
 
@@ -4104,29 +4029,31 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv, presets: LiveNewsPreset[]
           });
         };
 
+        const toGraphEmbedUrl = (session) => {
+          const fallbackUrl = '/arc/sd/graph/latest?embed=1';
+
+          if (!session?.graphUrl) {
+            return fallbackUrl;
+          }
+
+          try {
+            const url = new URL(session.graphUrl, window.location.origin);
+            url.searchParams.set('embed', '1');
+            return url.href;
+          } catch (_error) {
+            return fallbackUrl;
+          }
+        };
+
         const openGraphModal = (session) => {
-          if (!graphModal || !graphModalPreview) {
+          if (!graphModal || !graphModalFrame) {
             return;
           }
 
           state.graphModalZoom = 1;
           graphModal.classList.remove('hidden');
           graphModal.setAttribute('aria-hidden', 'false');
-
-          requestAnimationFrame(() => {
-            if (graphModal.classList.contains('hidden')) {
-              return;
-            }
-
-            renderGraphSurface(graphModalPreview, session, {
-              chartKey: 'graphModalChart',
-              canvasId: 'graph-modal-canvas',
-              canvasClass: 'graph-modal-canvas',
-              expandable: false,
-              zoomable: true
-            });
-            state.graphModalChart?.resize();
-          });
+          graphModalFrame.setAttribute('src', toGraphEmbedUrl(session));
         };
 
         const renderStages = (session) => {
@@ -4292,13 +4219,9 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv, presets: LiveNewsPreset[]
         const updateView = (session) => {
           state.lastSession = session;
 
-           if (!session) {
-             state.acceptedSnapshotMeta = null;
-             state.lastTerminalSnapshotMeta = null;
-           }
-
-          if (session?.status === 'completed' && hasStableWorkbenchResult(session)) {
-            state.stableResultSession = cloneSession(session);
+          if (!session) {
+            state.acceptedSnapshotMeta = null;
+            state.lastTerminalSnapshotMeta = null;
           }
 
           if (session) {
@@ -4309,7 +4232,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv, presets: LiveNewsPreset[]
             }
           }
 
-          const displaySession = createDisplaySession(session, state.stableResultSession);
+          const displaySession = session ?? null;
           state.displaySession = displaySession;
           setLaunchControlsDisabled(Boolean(session && (session.status === 'queued' || session.status === 'running')));
 
@@ -4320,20 +4243,15 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv, presets: LiveNewsPreset[]
             const cachedAt = session.source?.metadata?.cachedAt;
             const statusLabel = importStatus ? ' · 导入状态：' + formatImportStatusLabel(importStatus) : '';
             const cachedAtLabel = importStatus === 'cache' && cachedAt ? ' · 缓存时间：' + cachedAt : '';
-            const retainedNote = displaySession && displaySession.sessionId === session.sessionId && hasRetainedWorkbenchResult(displaySession)
-              ? session.status === 'failed'
-                ? ' · 本轮失败，已保留上一版结果'
-                : ' · 只有新结果成功返回后才替换当前工作台'
-              : '';
             formMessage.textContent = importMode
-              ? '当前 sessionId: ' + session.sessionId + ' · importMode=' + importMode + statusLabel + cachedAtLabel + retainedNote
-              : '当前 sessionId: ' + session.sessionId + statusLabel + cachedAtLabel + retainedNote;
+              ? '当前 sessionId: ' + session.sessionId + ' · importMode=' + importMode + statusLabel + cachedAtLabel
+              : '当前 sessionId: ' + session.sessionId + statusLabel + cachedAtLabel;
           }
 
-           const workbenchModel = createLiveWorkbenchViewModel(displaySession, supportedSourceLabels);
-            renderControlStrip(workbenchModel, session ?? displaySession);
-           setOverallStatus(workbenchModel, session ?? displaySession);
-           renderCredentials(displaySession ?? session);
+          const workbenchModel = createLiveWorkbenchViewModel(displaySession, supportedSourceLabels);
+          renderControlStrip(workbenchModel, session ?? displaySession);
+          setOverallStatus(workbenchModel, session ?? displaySession);
+          renderCredentials(displaySession ?? session);
           renderStages(session ?? displaySession);
           renderEventOverview(displaySession, workbenchModel);
           renderJudgments(workbenchModel);
@@ -4569,27 +4487,12 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv, presets: LiveNewsPreset[]
         document.addEventListener('click', async (event) => {
           const target = event.target;
           const graphExpandButton = target instanceof Element ? target.closest('[data-graph-expand]') : null;
-          const graphZoomButton = target instanceof Element ? target.closest('[data-graph-zoom]') : null;
 
           if (graphExpandButton) {
             const graphSession = state.displaySession ?? state.lastSession;
 
             if (graphSession) {
               openGraphModal(graphSession);
-            }
-
-            return;
-          }
-
-          if (graphZoomButton) {
-            const zoomAction = graphZoomButton.getAttribute('data-graph-zoom');
-
-            if (zoomAction === 'in') {
-              updateModalGraphZoom(state.graphModalZoom + graphZoomStep);
-            } else if (zoomAction === 'out') {
-              updateModalGraphZoom(state.graphModalZoom - graphZoomStep);
-            } else {
-              updateModalGraphZoom(1);
             }
 
             return;

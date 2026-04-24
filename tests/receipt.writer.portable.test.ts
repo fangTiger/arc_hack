@@ -226,7 +226,7 @@ describe('portable receipt writer', () => {
     );
   });
 
-  it('keeps the next nonce reserved after an ambiguous send failure with no rpc response', async () => {
+  it('reuses the nonce after an ambiguous send failure with no transaction hash', async () => {
     getTransactionCountMock
       .mockResolvedValueOnce(121)
       .mockResolvedValueOnce(121)
@@ -265,18 +265,22 @@ describe('portable receipt writer', () => {
     expect(sendTransactionMock).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
-        nonce: 122
+        nonce: 121
       })
     );
   });
 
-  it('keeps the next nonce reserved after an ambiguous post-broadcast receipt wait failure', async () => {
+  it('returns the transaction hash after an ambiguous post-broadcast receipt wait timeout', async () => {
     getTransactionCountMock
       .mockResolvedValueOnce(121)
       .mockResolvedValueOnce(121)
       .mockResolvedValueOnce(121);
     waitForTransactionReceiptMock
-      .mockRejectedValueOnce(new Error('request timed out while waiting for receipt'))
+      .mockRejectedValueOnce(
+        new Error(
+          `Timed out while waiting for transaction with hash "${defaultTxHash}" to be confirmed.\n\nVersion: viem@2.48.2`
+        )
+      )
       .mockResolvedValueOnce({
         transactionHash: defaultTxHash
       });
@@ -295,7 +299,10 @@ describe('portable receipt writer', () => {
         operation: 'summary',
         payloadHash: '0x1111111111111111111111111111111111111111111111111111111111111111'
       })
-    ).rejects.toThrow('request timed out');
+    ).resolves.toEqual({
+      mode: 'arc',
+      txHash: defaultTxHash
+    });
 
     await expect(
       writer.write({

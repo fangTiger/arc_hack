@@ -28,17 +28,17 @@ test('should complete a preset-driven analysis and support detail and graph over
   await page.locator('#detail-panel-close').click();
   await expect(page.locator('#detail-drawer')).toHaveAttribute('aria-hidden', 'true');
 
+  const liveUrlBeforeGraphModal = page.url();
+  await expect(page.getByTestId('graph-expand-button')).toHaveText('弹窗');
+  await expect(page.getByRole('link', { name: '独立页' })).toHaveCount(0);
   await page.getByTestId('graph-expand-button').click();
   await expect(page.locator('#graph-modal')).toHaveAttribute('aria-hidden', 'false');
-  await expect(page.locator('#graph-modal-preview .graph-modal-canvas, #graph-modal-preview .graph-list')).toBeVisible();
-  await expect(page.locator('#graph-zoom-label')).toHaveText('100%');
-  await page.getByRole('button', { name: '放大图谱' }).click();
-  await expect(page.locator('#graph-zoom-label')).toHaveText('115%');
-  await page.getByRole('button', { name: '重置图谱' }).click();
-  await expect(page.locator('#graph-zoom-label')).toHaveText('100%');
-
+  expect(page.url()).toBe(liveUrlBeforeGraphModal);
+  await expect(page.locator('#graph-modal-frame')).toBeVisible();
+  await expect(page.locator('#graph-modal-frame')).toHaveAttribute('src', /\/arc\/sd\/graph\/.+embed=1/);
+  await expect(page.frameLocator('#graph-modal-frame').getByRole('heading', { name: '关系画布' })).toBeVisible();
+  await expect(page.frameLocator('#graph-modal-frame').getByText('连通性参考', { exact: true })).toBeVisible();
   await page.locator('#graph-modal-close').click();
-  await expect(page.getByRole('link', { name: '打开独立关系页' })).toHaveAttribute('href', /\/arc\/sd\/graph\//);
 });
 
 test('should keep launch controls and the executive summary in the desktop first fold', async ({ page }) => {
@@ -72,7 +72,7 @@ test('should default to light theme and allow manual theme switching', async ({ 
   await expect(page.locator('#theme-toggle')).toHaveAttribute('data-theme-icon', 'sun');
 });
 
-test('should retain the previous result until a slow re-run replaces it', async ({ page }) => {
+test('should reset the previous result while a slow re-run is in progress', async ({ page }) => {
   await page.goto('/arc/sd/live');
 
   await page.getByTestId('source-drawer-toggle').click();
@@ -95,10 +95,12 @@ test('should retain the previous result until a slow re-run replaces it', async 
   await expect(page.locator('#overall-status')).toHaveAttribute('data-status-tone', 'running');
   await expect(page.locator('#overall-status-icon')).toHaveAttribute('data-status-icon', 'running');
   await expect(page.locator('#overall-status-progressbar')).toHaveAttribute('aria-valuenow', /^(?!0$|100$)\d+$/);
+  await expect(page.locator('#control-card-current-object')).toHaveAttribute('data-card-tone', 'completed');
   await expect(page.locator('#control-card-source-status')).toHaveAttribute('data-card-tone', 'completed');
   await expect(page.locator('#control-card-run-status')).toHaveAttribute('data-card-tone', 'running');
-  await expect(page.locator('#control-stepper .control-step[data-stage-status="running"]')).toBeVisible();
-  await expect(page.getByTestId('judgment-card-0')).toContainText('初步归类为融资');
+  await expect(page.locator('#control-stepper .control-step[data-stage-status="running"]').first()).toBeVisible();
+  await expect(page.locator('#judgment-list')).toContainText('等待事件判断生成');
+  await expect(page.locator('#judgment-list')).not.toContainText('初步归类为融资');
 
   await expect(page.locator('#overall-status-label')).toHaveText('分析完成');
   await expect(page.locator('#overall-status')).toHaveAttribute('data-status-tone', 'completed');

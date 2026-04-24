@@ -127,13 +127,15 @@ describe('createGraphRouter', () => {
     expect(response.text).toContain('session-graph');
     expect(response.text).toContain('/arc/sd/live/brand/logo.png');
     expect(response.text).toContain('The Economic OS');
-    expect(response.text).toContain('返回 Arc Signal Desk');
+    expect(response.text).toContain('color-scheme: light;');
+    expect(response.text).toContain('linear-gradient(180deg, #fcfcf9 0%, #f4f8fb 52%, #eef2f5 100%)');
+    expect(response.text).toContain('返回工作台');
     expect(response.text).toContain('/arc/sd/live');
     expect(response.text).toContain('graph-canvas');
     expect(response.text).toContain('cdn.jsdelivr.net/npm/echarts@5');
     expect(response.text).toContain('roam: true');
     expect(response.text).toContain('滚轮缩放');
-    expect(response.text).toContain('拖动画布');
+    expect(response.text).toContain('拖拽');
     expect(response.text).toContain('data-graph-zoom="out"');
     expect(response.text).toContain('data-graph-zoom="in"');
     expect(response.text).toContain('data-graph-zoom="reset"');
@@ -150,7 +152,11 @@ describe('createGraphRouter', () => {
     expect(response.text).toContain('wublock123');
     expect(response.text).toContain('https://wublock123.com/p/654321');
     expect(response.text).toContain('原文');
-    expect(response.text).toContain('derived 仅用于浏览连通性，不代表真实抽取关系');
+    expect(response.text).toContain('<span class="hint-pill">连通性参考</span>');
+    expect(response.text).not.toContain('<span class="hint-pill">derived 仅用于浏览连通性，不代表真实抽取关系</span>');
+    expect(response.text).toContain('background: rgba(255, 255, 255, 0.94);');
+    expect(response.text).toContain('color: var(--text);');
+    expect(response.text).not.toContain('color-scheme: dark;');
     expect(response.text).not.toContain('分析凭证');
     expect(response.text).not.toContain('Source Text');
     expect(response.text).not.toContain('Arc partners with Circle on machine-pay flows.');
@@ -169,6 +175,23 @@ describe('createGraphRouter', () => {
 
     expect(response.statusCode).toBe(302);
     expect(response.headers.location).toBe('/arc/sd/graph/latest');
+  });
+
+  it('should render the graph viewer in embed mode for the live modal', async () => {
+    const app = await createTestApp();
+
+    const response = await invokeApp(app, {
+      method: 'GET',
+      path: '/arc/sd/graph/latest?embed=1'
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.text).toContain('<body class="is-embedded">');
+    expect(response.text).toContain('关系画布');
+    expect(response.text).toContain('连接清单');
+    expect(response.text).toContain('来源信息');
+    expect(response.text).not.toContain('返回工作台');
+    expect(response.text).not.toContain('独立 graph 页面只负责关系导航');
   });
 
   it('should surface import status, cachedAt and derived edge guidance when present', async () => {
@@ -200,8 +223,9 @@ describe('createGraphRouter', () => {
     expect(response.text).toContain('缓存回退');
     expect(response.text).toContain('cachedAt');
     expect(response.text).toContain('2026-04-22T11:22:33.000Z');
-    expect(response.text).toContain('返回 Arc Signal Desk');
-    expect(response.text).toContain('derived 仅用于浏览连通性，不代表真实抽取关系');
+    expect(response.text).toContain('返回工作台');
+    expect(response.text).toContain('derived 关系仅作为连通性参考，不代表真实抽取结论');
+    expect(response.text).toContain('<span class="hint-pill">连通性参考</span>');
   });
 
   it('should keep old sessions without metadata compatible and return 404 when the session is missing', async () => {

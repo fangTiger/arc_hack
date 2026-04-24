@@ -196,7 +196,7 @@ class ArcReceiptWriter implements ReceiptWriter {
                 })
               });
             } catch (error) {
-              throw new ReceiptWriteAttemptError(error, this.isAmbiguousBroadcastError(error));
+              throw new ReceiptWriteAttemptError(error, false);
             }
 
             try {
@@ -204,6 +204,10 @@ class ArcReceiptWriter implements ReceiptWriter {
                 hash
               });
             } catch (error) {
+              if (this.isAmbiguousBroadcastError(error)) {
+                return hash;
+              }
+
               throw new ReceiptWriteAttemptError(error, true);
             }
 

@@ -248,7 +248,7 @@ describe('createLiveRouter', () => {
     expect(response.text).toContain('detail-drawer');
     expect(response.text).toContain('detail-panel');
     expect(response.text).toContain('graph-modal');
-    expect(response.text).toContain('graph-modal-preview');
+    expect(response.text).toContain('graph-modal-frame');
     expect(response.text).toContain('card-detail-trigger');
     expect(response.text).not.toContain('detail-dialog');
     expect(response.text).not.toContain('点击查看详情');
@@ -284,12 +284,16 @@ describe('createLiveRouter', () => {
     expect(response.text).toContain('function buildPreviewText');
     expect(response.text).toContain('function buildDetailSourceStatus');
     expect(response.text).toContain('function buildEvidenceDetail');
-    expect(response.text).toContain('stableResultSession');
     expect(response.text).toContain('displaySession');
     expect(response.text).toContain('acceptedSnapshotMeta');
     expect(response.text).toContain('lastTerminalSnapshotMeta');
     expect(response.text).toContain('shouldAcceptLiveSnapshot');
     expect(response.text).toContain('data-graph-expand');
+    expect(response.text).toContain('站内弹窗查看主体关系');
+    expect(response.text).toContain('toGraphEmbedUrl');
+    expect(response.text).toContain('graphModalFrame.setAttribute');
+    expect(response.text).not.toContain('graph-page-link');
+    expect(response.text).not.toContain('打开独立关系页');
     expect(response.text).toContain('data-graph-zoom="out"');
     expect(response.text).toContain('data-graph-zoom="in"');
     expect(response.text).toContain('data-graph-zoom="reset"');
@@ -297,8 +301,9 @@ describe('createLiveRouter', () => {
     expect(response.text).toContain('textBorderWidth');
     expect(response.text).toContain('shadowBlur');
     expect(response.text).toContain('fontWeight: 700');
-    expect(response.text).toContain('只有新结果成功返回后才替换当前工作台');
-    expect(response.text).toContain('本轮失败，已保留上一版结果');
+    expect(response.text).toContain('当前轮次进行中');
+    expect(response.text).not.toContain('只有新结果成功返回后才替换当前工作台');
+    expect(response.text).not.toContain('本轮失败，已保留上一版结果');
     expect(response.text).toContain('renderCredentials(displaySession ?? session)');
     expect(response.text).toContain('判断标签');
     expect(response.text).toContain('来源状态');
@@ -327,11 +332,8 @@ describe('createLiveRouter', () => {
 
     expect(openGraphModalMatch?.[1]).toContain("graphModal.classList.remove('hidden');");
     expect(openGraphModalMatch?.[1]).toContain("graphModal.setAttribute('aria-hidden', 'false');");
-    expect(openGraphModalMatch?.[1]).toContain('requestAnimationFrame(() => {');
-    expect(openGraphModalMatch?.[1]).toContain('state.graphModalChart?.resize();');
-    expect(openGraphModalMatch?.[1].indexOf("graphModal.classList.remove('hidden');")).toBeLessThan(
-      openGraphModalMatch?.[1].indexOf('renderGraphSurface(graphModalPreview, session, {') ?? Number.POSITIVE_INFINITY
-    );
+    expect(openGraphModalMatch?.[1]).toContain("graphModalFrame.setAttribute('src', toGraphEmbedUrl(session));");
+    expect(openGraphModalMatch?.[1]).not.toContain('renderGraphSurface(graphModalPreview');
   });
 
   it('should redirect legacy and branded shell URLs to the live product route', async () => {

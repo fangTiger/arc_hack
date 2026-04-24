@@ -10,6 +10,10 @@ type CreateGraphRouterOptions = {
   runtimeEnv: RuntimeEnv;
 };
 
+type RenderGraphPageOptions = {
+  embedded?: boolean;
+};
+
 const LIVE_PRODUCT_URL = '/arc/sd/live';
 const LIVE_BRAND_LOGO_URL = `${LIVE_PRODUCT_URL}/brand/logo.png`;
 
@@ -106,7 +110,8 @@ const renderSourceMetadata = (session: AgentSession): string => {
   `;
 };
 
-const renderGraphPage = (session: AgentSession): string => {
+const renderGraphPage = (session: AgentSession, options: RenderGraphPageOptions = {}): string => {
+  const embedded = Boolean(options.embedded);
   const graphNodes = JSON.stringify(
     session.graph.nodes.map((node) => ({
       id: node.id,
@@ -147,14 +152,14 @@ const renderGraphPage = (session: AgentSession): string => {
       <link rel="shortcut icon" type="image/png" href="${LIVE_BRAND_LOGO_URL}" />
       <style>
         :root {
-          color-scheme: dark;
-          --bg: #050912;
-          --panel: rgba(10, 16, 27, 0.92);
-          --border: rgba(140, 198, 255, 0.14);
-          --text: #edf4fb;
-          --muted: #93a4b8;
-          --accent: #86e7d4;
-          --gold: #d6a96c;
+          color-scheme: light;
+          --bg: #eef2f5;
+          --panel: rgba(255, 255, 255, 0.94);
+          --border: rgba(77, 94, 117, 0.14);
+          --text: #102132;
+          --muted: #5a6b7d;
+          --accent: #0f7278;
+          --gold: #b7793e;
         }
 
         * { box-sizing: border-box; }
@@ -164,9 +169,9 @@ const renderGraphPage = (session: AgentSession): string => {
           font-family: "Avenir Next", "Segoe UI", "PingFang SC", sans-serif;
           color: var(--text);
           background:
-            radial-gradient(circle at 12% 0%, rgba(140, 198, 255, 0.16), transparent 26rem),
-            radial-gradient(circle at 86% 10%, rgba(134, 231, 212, 0.12), transparent 20rem),
-            linear-gradient(180deg, #07101b 0%, var(--bg) 60%);
+            radial-gradient(circle at 10% 0%, rgba(59, 130, 246, 0.1), transparent 22rem),
+            radial-gradient(circle at 88% 6%, rgba(15, 114, 120, 0.08), transparent 18rem),
+            linear-gradient(180deg, #fcfcf9 0%, #f4f8fb 52%, #eef2f5 100%);
         }
 
         main {
@@ -179,7 +184,7 @@ const renderGraphPage = (session: AgentSession): string => {
           background: var(--panel);
           border: 1px solid var(--border);
           border-radius: 24px;
-          box-shadow: 0 24px 50px rgba(2, 8, 23, 0.34);
+          box-shadow: 0 26px 52px rgba(15, 23, 42, 0.08);
         }
 
         .hero {
@@ -200,7 +205,7 @@ const renderGraphPage = (session: AgentSession): string => {
           border-radius: 14px;
           overflow: hidden;
           border: 1px solid rgba(15, 23, 42, 0.08);
-          background: rgba(255, 255, 255, 0.72);
+          background: linear-gradient(135deg, rgba(14, 165, 233, 0.12), rgba(20, 184, 166, 0.1));
         }
 
         .brand-mark img {
@@ -266,6 +271,27 @@ const renderGraphPage = (session: AgentSession): string => {
           padding: 24px;
         }
 
+        .is-embedded {
+          background:
+            radial-gradient(circle at 10% 0%, rgba(59, 130, 246, 0.06), transparent 20rem),
+            linear-gradient(180deg, #fcfcf9 0%, #f4f8fb 100%);
+        }
+
+        .is-embedded main {
+          max-width: none;
+          padding: 0;
+        }
+
+        .is-embedded .layout {
+          grid-template-columns: minmax(0, 1.36fr) minmax(280px, 0.64fr);
+          gap: 16px;
+        }
+
+        .is-embedded .panel {
+          border-radius: 22px;
+          box-shadow: none;
+        }
+
         .graph-header,
         .side-stack {
           display: grid;
@@ -280,11 +306,11 @@ const renderGraphPage = (session: AgentSession): string => {
 
         .graph-surface {
           border-radius: 24px;
-          border: 1px solid rgba(140, 198, 255, 0.14);
+          border: 1px solid rgba(14, 165, 233, 0.14);
           background:
-            radial-gradient(circle at 16% 18%, rgba(140, 198, 255, 0.16), transparent 10rem),
-            radial-gradient(circle at 84% 12%, rgba(134, 231, 212, 0.12), transparent 10rem),
-            linear-gradient(180deg, rgba(7, 13, 24, 0.94), rgba(5, 9, 18, 0.92));
+            radial-gradient(circle at 16% 18%, rgba(59, 130, 246, 0.09), transparent 10rem),
+            radial-gradient(circle at 84% 12%, rgba(20, 184, 166, 0.08), transparent 10rem),
+            linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(242, 248, 255, 0.92));
           min-height: 560px;
           padding: 18px;
           position: relative;
@@ -297,8 +323,8 @@ const renderGraphPage = (session: AgentSession): string => {
           inset: 0;
           pointer-events: none;
           background:
-            linear-gradient(rgba(148, 163, 184, 0.06) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(148, 163, 184, 0.06) 1px, transparent 1px);
+            linear-gradient(rgba(14, 165, 233, 0.05) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(14, 165, 233, 0.05) 1px, transparent 1px);
           background-size: 34px 34px;
           mask-image: radial-gradient(circle at center, black, transparent 92%);
         }
@@ -344,15 +370,25 @@ const renderGraphPage = (session: AgentSession): string => {
         }
 
         .meta-card {
-          background: rgba(248, 250, 252, 0.92);
-          border: 1px solid rgba(148, 163, 184, 0.26);
+          background: rgba(255, 255, 255, 0.94);
+          border: 1px solid rgba(77, 94, 117, 0.14);
           border-radius: 18px;
           padding: 16px;
+          color: var(--text);
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
         }
 
         .source-card {
           display: grid;
           gap: 10px;
+        }
+
+        .source-card strong {
+          color: var(--text);
+        }
+
+        .source-card p {
+          color: var(--muted);
         }
 
         .evidence-field {
@@ -376,9 +412,10 @@ const renderGraphPage = (session: AgentSession): string => {
           padding: 8px 10px;
           border-radius: 12px;
           background: rgba(255, 255, 255, 0.96);
-          border: 1px solid rgba(148, 163, 184, 0.18);
+          border: 1px solid rgba(148, 163, 184, 0.22);
           font-family: "SFMono-Regular", "Menlo", monospace;
           font-size: 12px;
+          color: var(--text);
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
@@ -406,8 +443,8 @@ const renderGraphPage = (session: AgentSession): string => {
           min-width: 64px;
           padding: 8px 12px;
           border-radius: 999px;
-          border: 1px solid rgba(140, 198, 255, 0.18);
-          background: rgba(5, 11, 20, 0.82);
+          border: 1px solid rgba(14, 165, 233, 0.16);
+          background: rgba(14, 165, 233, 0.08);
           color: var(--text);
           font-family: "SFMono-Regular", "Menlo", monospace;
           font-size: 12px;
@@ -434,9 +471,9 @@ const renderGraphPage = (session: AgentSession): string => {
         }
       </style>
     </head>
-    <body>
+    <body class="${embedded ? 'is-embedded' : ''}">
       <main>
-        <section class="hero">
+        ${embedded ? '' : `<section class="hero">
           <div class="brand-row">
             <div class="brand-mark" aria-hidden="true">
               <img src="${LIVE_BRAND_LOGO_URL}" alt="" />
@@ -449,15 +486,15 @@ const renderGraphPage = (session: AgentSession): string => {
           <div class="eyebrow">关系导航器</div>
           <h1>${escapeHtml(session.source.title ?? session.sessionId)}</h1>
           <p class="summary">独立 graph 页面只负责关系导航，不承担结果主阅读。需要完整结论时，请回到 Arc Signal Desk 沿“执行摘要 -> 核心结论 -> 证据锚点”继续查看。</p>
-          <a class="return-link" href="${LIVE_PRODUCT_URL}">返回 Arc Signal Desk</a>
-        </section>
+          <a class="return-link" href="${LIVE_PRODUCT_URL}">返回工作台</a>
+        </section>`}
 
         <section class="layout">
           <article class="panel">
             <div class="graph-header">
               <div class="eyebrow">关系导航</div>
               <h2>关系画布</h2>
-              <p class="summary">使用 ECharts 渲染，支持滚轮缩放与拖动画布。derived 仅用于浏览连通性，不代表真实抽取关系。</p>
+              <p class="summary">使用 ECharts 渲染，支持滚轮缩放、拖拽和按钮缩放。derived 关系仅作为连通性参考，不代表真实抽取结论。</p>
               <div class="graph-toolbar" aria-label="图谱缩放控制">
                 <button type="button" class="copy-button" data-graph-zoom="out" aria-label="缩小图谱">-</button>
                 <span id="graph-zoom-label" class="graph-zoom-label">100%</span>
@@ -466,8 +503,8 @@ const renderGraphPage = (session: AgentSession): string => {
               </div>
               <div class="hint-row">
                 <span class="hint-pill">滚轮缩放</span>
-                <span class="hint-pill">拖动画布</span>
-                <span class="hint-pill">derived 仅用于浏览连通性，不代表真实抽取关系</span>
+                <span class="hint-pill">拖拽</span>
+                <span class="hint-pill">连通性参考</span>
               </div>
             </div>
             <div class="graph-surface">
@@ -681,7 +718,7 @@ const renderGraphPage = (session: AgentSession): string => {
 export const createGraphRouter = (options: CreateGraphRouterOptions) => {
   const router = Router();
 
-  router.get('/latest', async (_request, response) => {
+  router.get('/latest', async (request, response) => {
     const session = await options.agentGraphStore.readLatestSession();
 
     if (!session) {
@@ -689,7 +726,7 @@ export const createGraphRouter = (options: CreateGraphRouterOptions) => {
       return;
     }
 
-    response.status(200).type('html').send(renderGraphPage(session));
+    response.status(200).type('html').send(renderGraphPage(session, { embedded: request.query.embed === '1' }));
   });
 
   router.get('/:sessionId', async (request, response) => {
@@ -700,7 +737,7 @@ export const createGraphRouter = (options: CreateGraphRouterOptions) => {
       return;
     }
 
-    response.status(200).type('html').send(renderGraphPage(session));
+    response.status(200).type('html').send(renderGraphPage(session, { embedded: request.query.embed === '1' }));
   });
 
   return router;

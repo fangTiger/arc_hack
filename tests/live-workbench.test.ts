@@ -5,6 +5,7 @@ import {
   createLiveWorkbenchViewModel,
   getDisplayHeadline,
   getDisplaySourceTitle,
+  getCurrentObjectCardTone,
   getGraphPresentationMode,
   inferEventType,
   shouldAcceptLiveSnapshot,
@@ -189,6 +190,18 @@ describe('live workbench view model', () => {
     expect(viewModel.sourceModeValue).toBe('待输入');
   });
 
+  it('should mark the current object card as completed once the source is locked for analysis', () => {
+    const session = createSession({
+      status: 'running',
+      steps: createSteps('running', 'pending', 'pending'),
+      preview: {}
+    });
+
+    const viewModel = createLiveWorkbenchViewModel(session, supportedSourceLabels);
+
+    expect(getCurrentObjectCardTone(session, viewModel.pageStateTone)).toBe('completed');
+  });
+
   it('should gate entity and relation judgments until their steps complete', () => {
     const session = createSession({
       status: 'running',
@@ -210,7 +223,7 @@ describe('live workbench view model', () => {
     expect(judgments[0]?.title).toContain('初步归类');
   });
 
-  it('should retain the previous completed result while a re-run is still in progress', () => {
+  it('should reset completed-result judgments while a re-run is still in progress', () => {
     const session = createSession({
       status: 'running',
       steps: createSteps('running', 'pending', 'pending'),
@@ -232,13 +245,12 @@ describe('live workbench view model', () => {
     const viewModel = createLiveWorkbenchViewModel(session, supportedSourceLabels);
 
     expect(viewModel.summary).toContain('分析中');
-    expect(viewModel.summary).toContain('旧结果');
-    expect(viewModel.judgments).toHaveLength(3);
-    expect(viewModel.judgments[0]?.title).toContain('初步归类');
-    expect(viewModel.evidenceSectionNote).toContain('上一版');
+    expect(viewModel.summary).not.toContain('旧结果');
+    expect(viewModel.judgments).toHaveLength(0);
+    expect(viewModel.evidenceSectionNote).not.toContain('上一版');
   });
 
-  it('should keep the retained-result headline during a manual re-run without a source title', () => {
+  it('should show a pending headline during a manual re-run without a source title', () => {
     const session = createSession({
       status: 'running',
       source: {
@@ -266,12 +278,12 @@ describe('live workbench view model', () => {
 
     const viewModel = createLiveWorkbenchViewModel(session, supportedSourceLabels);
 
-    expect(viewModel.headline).toBe('Arc 为 AI 代理引入无 gas 小额支付，并接入 Circle 作为结算层');
-    expect(viewModel.headline).not.toBe('等待事件判断生成');
+    expect(viewModel.headline).toBe('等待事件判断生成');
+    expect(viewModel.headline).not.toBe('Arc 为 AI 代理引入无 gas 小额支付，并接入 Circle 作为结算层');
     expect(viewModel.headline).not.toBe('分析未完成');
   });
 
-  it('should keep the previous completed result visible when the re-run fails', () => {
+  it('should not keep the previous completed result visible when the re-run fails', () => {
     const session = createSession({
       status: 'failed',
       steps: createSteps('failed', 'pending', 'pending'),
@@ -293,12 +305,12 @@ describe('live workbench view model', () => {
     const viewModel = createLiveWorkbenchViewModel(session, supportedSourceLabels);
 
     expect(viewModel.summary).toContain('分析失败');
-    expect(viewModel.summary).toContain('旧结果');
-    expect(viewModel.judgments).toHaveLength(3);
-    expect(viewModel.evidenceSectionNote).toContain('失败反馈');
+    expect(viewModel.summary).not.toContain('旧结果');
+    expect(viewModel.judgments).toHaveLength(0);
+    expect(viewModel.evidenceSectionNote).not.toContain('失败反馈');
   });
 
-  it('should keep the retained-result headline after a manual re-run fails', () => {
+  it('should show an unfinished headline after a manual re-run fails', () => {
     const session = createSession({
       status: 'failed',
       source: {
@@ -326,9 +338,9 @@ describe('live workbench view model', () => {
 
     const viewModel = createLiveWorkbenchViewModel(session, supportedSourceLabels);
 
-    expect(viewModel.headline).toBe('Arc 为 AI 代理引入无 gas 小额支付，并接入 Circle 作为结算层');
+    expect(viewModel.headline).toBe('分析未完成');
     expect(viewModel.headline).not.toBe('等待事件判断生成');
-    expect(viewModel.headline).not.toBe('分析未完成');
+    expect(viewModel.headline).not.toBe('Arc 为 AI 代理引入无 gas 小额支付，并接入 Circle 作为结算层');
   });
 
   it('should downgrade evidence wording to manual-review language', () => {

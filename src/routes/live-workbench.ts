@@ -109,7 +109,6 @@ export type LiveWorkbenchViewModel = {
   credentialStatusValue: string;
   nextActionLabel: string;
   nextActionHint: string;
-  hasRetainedResult: boolean;
   headline: string;
   summary: string;
   briefing: string;
@@ -294,15 +293,10 @@ export function getDisplayHeadline(session: LiveWorkbenchSessionLike | null | un
   }
 
   const sourceTitle = session.source?.title?.trim();
-  const retainedResult = hasRetainedWorkbenchResult(session);
   const summaryReady = getStepStatus(session, 'summary') === 'completed' && getSummary(session).trim();
 
   if (sourceTitle) {
     return sourceTitle;
-  }
-
-  if (retainedResult) {
-    return getDisplaySourceTitle(session) ?? '事件判断已生成';
   }
 
   if (summaryReady) {
@@ -437,23 +431,6 @@ export function hasStableWorkbenchResult(session: LiveWorkbenchSessionLike | nul
   );
 }
 
-export function hasRetainedWorkbenchResult(session: LiveWorkbenchSessionLike | null | undefined): boolean {
-  if (!session || (session.status !== 'running' && session.status !== 'failed')) {
-    return false;
-  }
-
-  if (getStepStatus(session, 'summary') === 'completed') {
-    return false;
-  }
-
-  return Boolean(
-    session.agentSession &&
-      (session.agentSession.summary?.trim() ||
-        (session.agentSession.entities?.length ?? 0) > 0 ||
-        (session.agentSession.relations?.length ?? 0) > 0)
-  );
-}
-
 export function getPhaseLabel(session: LiveWorkbenchSessionLike | null | undefined): string {
   if (!session) {
     return '尚未进入分析阶段';
@@ -508,8 +485,6 @@ export function getPageStateSummary(session: LiveWorkbenchSessionLike | null | u
   nextActionLabel: string;
   nextActionHint: string;
 } {
-  const retainedResult = hasRetainedWorkbenchResult(session);
-
   if (!session) {
     return {
       label: '待导入',
@@ -538,13 +513,11 @@ export function getPageStateSummary(session: LiveWorkbenchSessionLike | null | u
     return {
       label: '分析中',
       tone: 'running',
-      summary: retainedResult
-        ? '分析中：新一轮结果生成中，旧结果暂时保留。'
-        : session.mode === 'gateway'
-          ? '分析中：批量支付与结果处理进行中。'
-          : '分析中：事件判断、主体和证据正在回填。',
+      summary: session.mode === 'gateway'
+        ? '分析中：批量支付与结果处理进行中。'
+        : '分析中：事件判断、主体和证据正在回填。',
       nextActionLabel: '等待结果',
-      nextActionHint: retainedResult ? '旧结果仍可继续复核。' : '保持当前页面以查看增量更新。'
+      nextActionHint: '保持当前页面以查看增量更新。'
     };
   }
 
@@ -552,11 +525,9 @@ export function getPageStateSummary(session: LiveWorkbenchSessionLike | null | u
     return {
       label: '分析失败',
       tone: 'failed',
-      summary: retainedResult
-        ? '分析失败：本轮失败，旧结果已保留。'
-        : '分析失败：请先检查来源、运行状态与调用凭证。',
-      nextActionLabel: retainedResult ? '重新分析' : '重试分析',
-      nextActionHint: retainedResult ? '旧结果仍保留在主区与侧栏。' : '建议先确认材料与导入方式。'
+      summary: '分析失败：请先检查来源、运行状态与调用凭证。',
+      nextActionLabel: '重试分析',
+      nextActionHint: '建议先确认材料与导入方式。'
     };
   }
 
@@ -579,6 +550,37 @@ export function getPageStateSummary(session: LiveWorkbenchSessionLike | null | u
     nextActionLabel: readyToAnalyze ? '开始分析' : '导入材料',
     nextActionHint: readyToAnalyze ? '工作台会保留骨架并等待结果返回。' : '可导入链接、正文或预置样本。'
   };
+}
+
+export function getCurrentObjectCardTone(
+  session: LiveWorkbenchSessionLike | null | undefined,
+  pageTone: LiveWorkbenchViewModel['pageStateTone']
+): LiveWorkbenchViewModel['pageStateTone'] {
+  if (!session) {
+    return 'idle';
+  }
+
+  const metadata = getSourceMetadata(session);
+  const hasLockedObject = Boolean(
+    session.source?.title?.trim() ||
+      session.source?.text?.trim() ||
+      metadata.articleUrl ||
+      hasStableWorkbenchResult(session)
+  );
+
+  if (hasLockedObject) {
+    return 'completed';
+  }
+
+  if (pageTone === 'failed') {
+    return 'failed';
+  }
+
+  if (pageTone === 'running') {
+    return 'running';
+  }
+
+  return 'ready';
 }
 
 export function buildPreviewText(value: string, limit = 92): string {
@@ -637,9 +639,7 @@ export function buildJudgments(
   session: LiveWorkbenchSessionLike | null | undefined,
   supportedSourceLabels: SupportedSourceLabelMap = {}
 ): LiveWorkbenchJudgment[] {
-  const retainedResult = hasRetainedWorkbenchResult(session);
-
-  if (!session || (getStepStatus(session, 'summary') !== 'completed' && !retainedResult)) {
+  if (!session || getStepStatus(session, 'summary') !== 'completed') {
     return [];
   }
 
@@ -675,11 +675,11 @@ export function buildJudgments(
     }
   ];
 
-  if (getStepStatus(session, 'entities') === 'completed' || retainedResult) {
+  if (getStepStatus(session, 'entities') === 'completed') {
     const entityNames = entities.slice(0, 3).map((entity) => entity.name);
     const entityDetailTags = [
       entities.length > 0 ? `${entities.length} 个主体` : '主体待确认',
-      getStepStatus(session, 'relations') === 'completed' || retainedResult ? `${relations.length} 条关系` : '关系待补全'
+      getStepStatus(session, 'relations') === 'completed' ? `${relations.length} 条关系` : '关系待补全'
     ];
     judgments.push({
       kicker: '主体判断',
@@ -710,7 +710,7 @@ export function buildJudgments(
     });
   }
 
-  if (getStepStatus(session, 'relations') === 'completed' || retainedResult) {
+  if (getStepStatus(session, 'relations') === 'completed') {
     const firstRelation = relations[0];
     const relationDetailTags = [
       formatImportModeLabel(metadata.importMode),
@@ -758,8 +758,7 @@ export function createLiveWorkbenchViewModel(
   supportedSourceLabels: SupportedSourceLabelMap
 ): LiveWorkbenchViewModel {
   const metadata = getSourceMetadata(session);
-  const retainedResult = hasRetainedWorkbenchResult(session);
-  const summaryReady = getStepStatus(session, 'summary') === 'completed' || retainedResult;
+  const summaryReady = getStepStatus(session, 'summary') === 'completed';
   const pageState = getPageStateSummary(session);
   const sourceLabel = getDisplaySource(session, supportedSourceLabels);
   const importModeLabel = formatImportModeLabel(metadata.importMode);
@@ -782,9 +781,7 @@ export function createLiveWorkbenchViewModel(
       })()
     : pageState.summary;
   const hasSourceTitle = Boolean(session?.source?.title?.trim());
-  const summary = retainedResult
-    ? pageState.summary
-    : summaryReady
+  const summary = summaryReady
     ? hasSourceTitle
       ? briefing
       : '正文分析已完成，可在下方查看核心结论与证据锚点。'
@@ -807,11 +804,7 @@ export function createLiveWorkbenchViewModel(
   const currentObjectValue = getDisplaySourceTitle(session) ?? getDisplayHeadline(session);
   const runStatusValue = `${pageState.label} · ${getPhaseLabel(session).replace(/^阶段：/, '')}`;
   const judgments = buildJudgments(session, supportedSourceLabels);
-  const evidenceSectionNote = retainedResult
-    ? session?.status === 'failed'
-      ? '本轮失败，已保留上一版证据锚点与失败反馈，便于继续人工复核；暂不宣称已完成逐句证据对齐。'
-      : '当前展示的是上一版证据锚点；新结果生成期间会继续保留它们供人工复核，直到新结果成功替换。'
-    : '当前展示的是相关原文片段，便于人工复核；暂不宣称已完成逐句证据对齐。';
+  const evidenceSectionNote = '当前展示的是相关原文片段，便于人工复核；暂不宣称已完成逐句证据对齐。';
   const deepReadingLead = summaryReady
     ? '完整摘要、延展判断与复核提示会在这里继续展开，帮助你在首屏结论之外继续深读。'
     : '完整摘要、延展判断与复核提示会在分析完成后继续展开。';
@@ -835,7 +828,7 @@ export function createLiveWorkbenchViewModel(
             evidenceSectionNote,
             `来源状态：${sourceStatusValue}。`,
             `凭证状态：${credentialStatusValue}。`,
-            retainedResult ? '当前仍在沿用上一版结果，请结合本轮状态继续判断是否需要重试。' : '当前结果已接管工作台，可继续向下复核。'
+            '当前结果已接管工作台，可继续向下复核。'
           ].join(' ')
         }
       ]
@@ -852,7 +845,6 @@ export function createLiveWorkbenchViewModel(
     credentialStatusValue,
     nextActionLabel: pageState.nextActionLabel,
     nextActionHint: pageState.nextActionHint,
-    hasRetainedResult: retainedResult,
     headline: getDisplayHeadline(session),
     summary,
     briefing,
