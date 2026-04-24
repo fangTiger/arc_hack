@@ -162,7 +162,7 @@ describe('createLiveRouter', () => {
 
     const response = await invokeApp(app, {
       method: 'GET',
-      path: '/demo/live'
+      path: '/arc/sd/live'
     });
 
     expect(response.statusCode).toBe(200);
@@ -171,7 +171,7 @@ describe('createLiveRouter', () => {
     expect(response.text).toContain('<html lang="zh-CN" data-theme="light">');
     expect(response.text).toContain('rel="icon"');
     expect(response.text).toContain('rel="shortcut icon"');
-    expect(response.text).toContain('/demo/live/brand/logo.png');
+    expect(response.text).toContain('/arc/sd/live/brand/logo.png');
     expect(response.text).toContain('id="theme-toggle"');
     expect(response.text).toContain('aria-label="切换到夜航"');
     expect(response.text).toContain('data-theme-icon="moon"');
@@ -267,8 +267,8 @@ describe('createLiveRouter', () => {
     expect(response.text).toContain('香港比特币与以太坊现货 ETF 本周净流入达到近三个月高点');
     expect(response.text).toContain('"importMode":"preset"');
     expect(response.text).toContain('填充示例');
-    expect(response.text).toContain('/demo/live/session');
-    expect(response.text).toContain('/demo/live/session/active');
+    expect(response.text).toContain('/arc/sd/live/session');
+    expect(response.text).toContain('/arc/sd/live/session/active');
     expect(response.text).toContain("cache: 'no-store'");
     expect(response.text).toContain('graph-surface');
     expect(response.text).toContain('position: static;');
@@ -334,6 +334,30 @@ describe('createLiveRouter', () => {
     );
   });
 
+  it('should redirect legacy and branded shell URLs to the live product route', async () => {
+    const { app } = createTestHarness();
+
+    const legacyRootResponse = await invokeApp(app, {
+      method: 'GET',
+      path: '/demo'
+    });
+    const legacyLiveResponse = await invokeApp(app, {
+      method: 'GET',
+      path: '/demo/live'
+    });
+    const brandedRootResponse = await invokeApp(app, {
+      method: 'GET',
+      path: '/arc/sd'
+    });
+
+    expect(legacyRootResponse.statusCode).toBe(302);
+    expect(legacyRootResponse.headers.location).toBe('/arc/sd/live');
+    expect(legacyLiveResponse.statusCode).toBe(302);
+    expect(legacyLiveResponse.headers.location).toBe('/arc/sd/live');
+    expect(brandedRootResponse.statusCode).toBe(302);
+    expect(brandedRootResponse.headers.location).toBe('/arc/sd/live');
+  });
+
   it('should render Arc branding, dynamic presets and recommended trial links', async () => {
     const dynamicTitle = 'A Conversation with Circle CEO: Profit Model, Bank Competition, and Arc Chain Strategy';
     const { app } = createTestHarness({
@@ -358,7 +382,7 @@ describe('createLiveRouter', () => {
 
     const response = await invokeApp(app, {
       method: 'GET',
-      path: '/demo/live'
+      path: '/arc/sd/live'
     });
 
     expect(response.statusCode).toBe(200);
@@ -375,7 +399,7 @@ describe('createLiveRouter', () => {
 
     const response = await invokeApp(app, {
       method: 'GET',
-      path: '/demo/live/brand/logo.png'
+      path: '/arc/sd/live/brand/logo.png'
     });
 
     expect(response.statusCode).toBe(200);
@@ -387,11 +411,11 @@ describe('createLiveRouter', () => {
 
     const missingLatestResponse = await invokeApp(app, {
       method: 'GET',
-      path: '/demo/live/session/latest'
+      path: '/arc/sd/live/session/latest'
     });
     const missingActiveResponse = await invokeApp(app, {
       method: 'GET',
-      path: '/demo/live/session/active'
+      path: '/arc/sd/live/session/active'
     });
 
     expect(missingLatestResponse.statusCode).toBe(404);
@@ -399,7 +423,7 @@ describe('createLiveRouter', () => {
 
     const createResponse = await invokeApp(app, {
       method: 'POST',
-      path: '/demo/live/session',
+      path: '/arc/sd/live/session',
       body: {
         title: 'Arc live console',
         text: 'Arc introduced gasless nanopayments for AI agents. Circle provides the settlement layer.'
@@ -416,19 +440,19 @@ describe('createLiveRouter', () => {
     const session = await waitForSession(liveSessionStore, sessionId);
     const latestResponse = await invokeApp(app, {
       method: 'GET',
-      path: '/demo/live/session/latest'
+      path: '/arc/sd/live/session/latest'
     });
     const activeResponse = await invokeApp(app, {
       method: 'GET',
-      path: '/demo/live/session/active'
+      path: '/arc/sd/live/session/active'
     });
     const detailResponse = await invokeApp(app, {
       method: 'GET',
-      path: `/demo/live/session/${sessionId}`
+      path: `/arc/sd/live/session/${sessionId}`
     });
     const missingResponse = await invokeApp(app, {
       method: 'GET',
-      path: '/demo/live/session/missing'
+      path: '/arc/sd/live/session/missing'
     });
 
     expect(session).toMatchObject({
@@ -464,14 +488,14 @@ describe('createLiveRouter', () => {
       runAgentGraphSession: async ({ sessionId, source }) => ({
         sessionId,
         artifactPath: join(tmpdir(), `${sessionId}.json`),
-        graphUrl: `http://127.0.0.1:3000/demo/graph/${sessionId}`,
+        graphUrl: `http://127.0.0.1:3000/arc/sd/graph/${sessionId}`,
         session: createCompletedAgentSession(sessionId, source!)
       })
     });
 
     const createResponse = await invokeApp(app, {
       method: 'POST',
-      path: '/demo/live/session',
+      path: '/arc/sd/live/session',
       body: {
         text: 'Arc introduced gasless nanopayments for AI agents. Circle provides the settlement layer.',
         sourceType: 'research',
@@ -511,14 +535,14 @@ describe('createLiveRouter', () => {
       runAgentGraphSession: async ({ sessionId, source }) => ({
         sessionId,
         artifactPath: join(tmpdir(), `${sessionId}.json`),
-        graphUrl: `http://127.0.0.1:3000/demo/graph/${sessionId}`,
+        graphUrl: `http://127.0.0.1:3000/arc/sd/graph/${sessionId}`,
         session: createCompletedAgentSession(sessionId, source!)
       })
     });
 
     const createResponse = await invokeApp(app, {
       method: 'POST',
-      path: '/demo/live/session',
+      path: '/arc/sd/live/session',
       body: {
         articleUrl: importedArticle.sourceUrl
       }
@@ -530,11 +554,11 @@ describe('createLiveRouter', () => {
     const session = await waitForSession(liveSessionStore, sessionId);
     const latestResponse = await invokeApp(app, {
       method: 'GET',
-      path: '/demo/live/session/latest'
+      path: '/arc/sd/live/session/latest'
     });
     const detailResponse = await invokeApp(app, {
       method: 'GET',
-      path: `/demo/live/session/${sessionId}`
+      path: `/arc/sd/live/session/${sessionId}`
     });
 
     expect(session).toMatchObject({
@@ -591,14 +615,14 @@ describe('createLiveRouter', () => {
       runAgentGraphSession: async ({ sessionId, source }) => ({
         sessionId,
         artifactPath: join(tmpdir(), `${sessionId}.json`),
-        graphUrl: `http://127.0.0.1:3000/demo/graph/${sessionId}`,
+        graphUrl: `http://127.0.0.1:3000/arc/sd/graph/${sessionId}`,
         session: createCompletedAgentSession(sessionId, source!)
       })
     });
 
     const createResponse = await invokeApp(app, {
       method: 'POST',
-      path: '/demo/live/session',
+      path: '/arc/sd/live/session',
       body: {
         articleUrl: importedArticle.sourceUrl
       }
@@ -610,11 +634,11 @@ describe('createLiveRouter', () => {
     const session = await waitForSession(liveSessionStore, sessionId);
     const latestResponse = await invokeApp(app, {
       method: 'GET',
-      path: '/demo/live/session/latest'
+      path: '/arc/sd/live/session/latest'
     });
     const pageResponse = await invokeApp(app, {
       method: 'GET',
-      path: '/demo/live'
+      path: '/arc/sd/live'
     });
 
     expect(session?.source.metadata).toEqual({
@@ -647,14 +671,14 @@ describe('createLiveRouter', () => {
       runAgentGraphSession: async ({ sessionId, source }) => ({
         sessionId,
         artifactPath: join(tmpdir(), `${sessionId}.json`),
-        graphUrl: `http://127.0.0.1:3000/demo/graph/${sessionId}`,
+        graphUrl: `http://127.0.0.1:3000/arc/sd/graph/${sessionId}`,
         session: createCompletedAgentSession(sessionId, source!)
       })
     });
 
     const createResponse = await invokeApp(app, {
       method: 'POST',
-      path: '/demo/live/session',
+      path: '/arc/sd/live/session',
       body: {
         title: 'PANews：某协议完成 5000 万美元融资',
         text: 'PANews 4 月 22 日消息，某协议宣布完成 5000 万美元融资。',
@@ -695,7 +719,7 @@ describe('createLiveRouter', () => {
 
     const response = await invokeApp(app, {
       method: 'POST',
-      path: '/demo/live/session',
+      path: '/arc/sd/live/session',
       body: {
         articleUrl: 'https://www.wublock123.com/articles/kelpdao-exploit-debt-crisis-defi-bad-debt-resolution-58888'
       }
@@ -731,7 +755,7 @@ describe('createLiveRouter', () => {
 
     const createResponse = await invokeApp(app, {
       method: 'POST',
-      path: '/demo/live/session',
+      path: '/arc/sd/live/session',
       body: {
         title: 'Arc live receipt',
         text: 'Arc introduced gasless nanopayments for AI agents. Circle provides the settlement layer.'
@@ -774,7 +798,7 @@ describe('createLiveRouter', () => {
 
     const createResponse = await invokeApp(app, {
       method: 'POST',
-      path: '/demo/live/session',
+      path: '/arc/sd/live/session',
       body: {
         title: 'Arc live receipt',
         text: 'Arc introduced gasless nanopayments for AI agents. Circle provides the settlement layer.'
@@ -787,11 +811,11 @@ describe('createLiveRouter', () => {
     const failedSession = await waitForSession(liveSessionStore, sessionId, 'failed');
     const latestResponse = await invokeApp(app, {
       method: 'GET',
-      path: '/demo/live/session/latest'
+      path: '/arc/sd/live/session/latest'
     });
     const detailResponse = await invokeApp(app, {
       method: 'GET',
-      path: `/demo/live/session/${sessionId}`
+      path: `/arc/sd/live/session/${sessionId}`
     });
 
     expect(failedSession?.error).toContain('--private-key [REDACTED]');
@@ -856,7 +880,7 @@ describe('createLiveRouter', () => {
         return {
           sessionId,
           artifactPath: join(tmpdir(), `${sessionId}.json`),
-          graphUrl: `http://127.0.0.1:3000/demo/graph/${sessionId}`,
+          graphUrl: `http://127.0.0.1:3000/arc/sd/graph/${sessionId}`,
           session: createCompletedAgentSession(sessionId, source!)
         };
       }
@@ -864,7 +888,7 @@ describe('createLiveRouter', () => {
 
     const createResponse = await invokeApp(app, {
       method: 'POST',
-      path: '/demo/live/session',
+      path: '/arc/sd/live/session',
       body: {
         title: 'Gateway progress session',
         text: 'Arc introduced gasless nanopayments for AI agents. Circle provides the settlement layer.'
@@ -910,7 +934,7 @@ describe('createLiveRouter', () => {
 
       const createResponse = await invokeApp(app, {
         method: 'POST',
-        path: '/demo/live/session',
+        path: '/arc/sd/live/session',
         body: {
           title: 'Arc live receipt',
           text: 'Arc introduced gasless nanopayments for AI agents. Circle provides the settlement layer.'
@@ -955,7 +979,7 @@ describe('createLiveRouter', () => {
 
       const response = await invokeApp(app, {
         method: 'POST',
-        path: '/demo/live/session',
+        path: '/arc/sd/live/session',
         body: {
           articleUrl: signedArticleUrl
         }
@@ -994,7 +1018,7 @@ describe('createLiveRouter', () => {
           return {
             sessionId,
             artifactPath: join(tmpdir(), `${sessionId}.json`),
-            graphUrl: `http://127.0.0.1:3000/demo/graph/${sessionId}`,
+            graphUrl: `http://127.0.0.1:3000/arc/sd/graph/${sessionId}`,
             session: createCompletedAgentSession(sessionId, {
               sourceType: 'news',
               title: 'Active session',
@@ -1006,12 +1030,12 @@ describe('createLiveRouter', () => {
 
     const missingInputResponse = await invokeApp(app, {
       method: 'POST',
-      path: '/demo/live/session',
+      path: '/arc/sd/live/session',
       body: {}
     });
     const bothInputsResponse = await invokeApp(app, {
       method: 'POST',
-      path: '/demo/live/session',
+      path: '/arc/sd/live/session',
       body: {
         text: 'Arc introduced gasless nanopayments for AI agents.',
         articleUrl: 'https://wublock123.com/p/654321'
@@ -1019,7 +1043,7 @@ describe('createLiveRouter', () => {
     });
     const invalidUrlResponse = await invokeApp(app, {
       method: 'POST',
-      path: '/demo/live/session',
+      path: '/arc/sd/live/session',
       body: {
         articleUrl: 'not-a-valid-url'
       }
@@ -1032,7 +1056,7 @@ describe('createLiveRouter', () => {
 
     const firstCreateResponse = await invokeApp(app, {
       method: 'POST',
-      path: '/demo/live/session',
+      path: '/arc/sd/live/session',
       body: {
         title: 'Active session',
         text: 'Arc introduced gasless nanopayments for AI agents.'
@@ -1055,12 +1079,12 @@ describe('createLiveRouter', () => {
 
     const activeResponse = await invokeApp(app, {
       method: 'GET',
-      path: '/demo/live/session/active'
+      path: '/arc/sd/live/session/active'
     });
 
     const duplicateResponse = await invokeApp(app, {
       method: 'POST',
-      path: '/demo/live/session',
+      path: '/arc/sd/live/session',
       body: {
         title: 'Duplicate session',
         text: 'Circle provides the settlement layer.'
@@ -1085,7 +1109,7 @@ describe('createLiveRouter', () => {
       runAgentGraphSession: async ({ sessionId, source }) => ({
         sessionId,
         artifactPath: join(tmpdir(), `${sessionId}.json`),
-        graphUrl: `http://127.0.0.1:3000/demo/graph/${sessionId}`,
+        graphUrl: `http://127.0.0.1:3000/arc/sd/graph/${sessionId}`,
         session: createCompletedAgentSession(sessionId, source!)
       })
     });
@@ -1116,15 +1140,15 @@ describe('createLiveRouter', () => {
 
     const activeResponse = await invokeApp(app, {
       method: 'GET',
-      path: '/demo/live/session/active'
+      path: '/arc/sd/live/session/active'
     });
     const detailResponse = await invokeApp(app, {
       method: 'GET',
-      path: `/demo/live/session/${staleSession.sessionId}`
+      path: `/arc/sd/live/session/${staleSession.sessionId}`
     });
     const createResponse = await invokeApp(app, {
       method: 'POST',
-      path: '/demo/live/session',
+      path: '/arc/sd/live/session',
       body: {
         text: 'Circle provides the settlement layer for Arc machine payments.',
         sourceType: 'news',

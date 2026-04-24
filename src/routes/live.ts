@@ -93,7 +93,8 @@ type ParsedCreateSessionBody =
 const SUPPORTED_SOURCE_SITE_VALUES = new Set<SupportedNewsSite>(['wublock123', 'panews', 'chaincatcher']);
 const SUPPORTED_IMPORT_MODES = new Set<SourceImportMode>(['manual', 'link', 'preset']);
 const SUPPORTED_IMPORT_STATUSES = new Set<SourceMetadata['importStatus']>(['live', 'cache']);
-const LIVE_BRAND_LOGO_URL = '/demo/live/brand/logo.png';
+const LIVE_PRODUCT_BASE_PATH = '/arc/sd/live';
+const LIVE_BRAND_LOGO_URL = `${LIVE_PRODUCT_BASE_PATH}/brand/logo.png`;
 const LIVE_BRAND_LOGO_PATH = fileURLToPath(new URL('../../docs/pic/logo.png', import.meta.url));
 
 const escapeHtml = (value: string): string => {
@@ -464,39 +465,39 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv, presets: LiveNewsPreset[]
         main {
           max-width: 1540px;
           margin: 0 auto;
-          padding: 26px 24px 56px;
+          padding: 20px 24px 56px;
           position: relative;
           z-index: 1;
         }
 
         .control-strip,
         .toolbelt-shell {
-          margin-bottom: 20px;
-          padding: 22px 24px;
+          margin-bottom: 14px;
+          padding: 18px 22px;
         }
 
         .control-strip h1 {
-          margin: 0 0 10px;
-          font-size: clamp(2.2rem, 4vw, 3.85rem);
-          line-height: 0.92;
-          letter-spacing: -0.04em;
+          margin: 0 0 8px;
+          font-size: clamp(2rem, 3.35vw, 3.1rem);
+          line-height: 0.98;
+          letter-spacing: 0;
           color: var(--ink-strong);
         }
 
         .control-grid,
         .toolbelt-actions {
           display: grid;
-          grid-template-columns: repeat(5, minmax(0, 1fr));
-          gap: 12px;
-          margin-top: 20px;
+          grid-template-columns: repeat(6, minmax(0, 1fr));
+          gap: 10px;
+          margin-top: 14px;
         }
 
         .control-card {
-          border-radius: 18px;
+          border-radius: 16px;
           border: 1px solid var(--line);
           background:
             linear-gradient(180deg, rgba(15, 23, 42, 0.9), rgba(8, 16, 28, 0.84));
-          padding: 16px 16px 18px;
+          padding: 13px 14px 14px;
           box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
           transition: border-color 180ms ease, box-shadow 180ms ease, background 180ms ease;
         }
@@ -553,12 +554,12 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv, presets: LiveNewsPreset[]
           letter-spacing: 0.14em;
           text-transform: uppercase;
           color: var(--accent);
-          margin-bottom: 12px;
+          margin-bottom: 8px;
         }
 
         .control-value {
-          font-size: 18px;
-          line-height: 1.5;
+          font-size: 16px;
+          line-height: 1.45;
           color: var(--ink-strong);
         }
 
@@ -1575,13 +1576,20 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv, presets: LiveNewsPreset[]
           cursor: default;
         }
 
+        .graph-page-link {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          text-decoration: none;
+        }
+
         .workbench-top {
           display: flex;
           justify-content: space-between;
           gap: 14px;
           align-items: flex-start;
           flex-wrap: wrap;
-          margin-bottom: 18px;
+          margin-bottom: 10px;
         }
 
         .workbench-top h2 {
@@ -1596,14 +1604,14 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv, presets: LiveNewsPreset[]
         .workbench-top p {
           margin: 0;
           color: var(--muted);
-          line-height: 1.6;
+          line-height: 1.45;
         }
 
         .brand-row {
           display: flex;
           align-items: center;
           gap: 14px;
-          margin-bottom: 10px;
+          margin-bottom: 8px;
         }
 
         .arc-mark {
@@ -1757,16 +1765,16 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv, presets: LiveNewsPreset[]
         }
 
         .control-stepper {
-          margin-top: 14px;
+          margin-top: 10px;
           display: grid;
           grid-template-columns: repeat(5, minmax(0, 1fr));
-          gap: 10px;
+          gap: 8px;
           align-items: start;
         }
 
         .control-step {
           display: grid;
-          gap: 8px;
+          gap: 6px;
           min-width: 0;
         }
 
@@ -2412,11 +2420,11 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv, presets: LiveNewsPreset[]
 
           .input-panel {
             position: static;
-            order: 2;
+            order: 1;
           }
 
           .result-panel {
-            order: 1;
+            order: 2;
           }
 
           textarea {
@@ -2425,6 +2433,148 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv, presets: LiveNewsPreset[]
         }
 
         @media (max-width: 720px) {
+          main {
+            padding: 12px 12px 36px;
+          }
+
+          .control-strip,
+          .toolbelt-shell,
+          .panel {
+            border-radius: 22px;
+            padding: 16px;
+          }
+
+          .control-strip {
+            margin-bottom: 12px;
+          }
+
+          .control-strip h1 {
+            font-size: 2.15rem;
+            line-height: 1;
+          }
+
+          .brand-row {
+            gap: 10px;
+            margin-bottom: 6px;
+          }
+
+          .arc-mark {
+            width: 42px;
+            height: 42px;
+            border-radius: 14px;
+          }
+
+          .arc-subtitle {
+            font-size: 11px;
+          }
+
+          .workbench-top {
+            gap: 10px;
+            margin-bottom: 10px;
+          }
+
+          .control-actions {
+            width: 100%;
+            justify-content: space-between;
+          }
+
+          .status-chip {
+            flex: 1 1 auto;
+            min-width: 0;
+          }
+
+          .control-stepper {
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+            gap: 6px;
+          }
+
+          .control-step-name {
+            font-size: 10px;
+            line-height: 1.25;
+          }
+
+          .control-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 10px;
+            margin-top: 12px;
+          }
+
+          #control-card-source-status,
+          #control-card-run-status,
+          #control-card-credential-status {
+            display: none;
+          }
+
+          .control-card,
+          .control-card-wide {
+            min-height: 82px;
+          }
+
+          .control-card-wide {
+            grid-column: span 1;
+          }
+
+          .control-label {
+            margin-bottom: 7px;
+          }
+
+          .control-value {
+            font-size: 15px;
+          }
+
+          .layout,
+          .workbench-grid,
+          .workbench-main,
+          .workbench-sidebar {
+            gap: 12px;
+          }
+
+          .source-drawer-summary {
+            padding: 16px;
+          }
+
+          .source-drawer-copy h2 {
+            font-size: 1.35rem;
+          }
+
+          .source-drawer-copy p {
+            display: none;
+          }
+
+          .source-drawer-toggle {
+            min-width: 116px;
+            padding: 9px 12px;
+          }
+
+          .overview-card {
+            border-radius: 22px;
+            padding: 18px;
+          }
+
+          .overview-card h3 {
+            font-size: 1.9rem;
+            line-height: 1.06;
+          }
+
+          .overview-card p {
+            font-size: 15px;
+            line-height: 1.68;
+          }
+
+          .metric-grid {
+            grid-template-columns: 1fr;
+            gap: 8px;
+          }
+
+          .metric-tile {
+            padding: 12px 14px;
+          }
+
+          .metric-value {
+            font-size: 18px;
+          }
+
           .detail-panel {
             left: 0;
             width: 100%;
@@ -2568,9 +2718,9 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv, presets: LiveNewsPreset[]
                 <div class="source-drawer-copy">
                   <div class="section-kicker">线索入口</div>
                   <h2>线索入口</h2>
-                  <p>输入入口默认退入次要操作。需要更换材料时，再展开来源输入、手动文本与预置启动器。</p>
+                  <p>选一条预置线索最快进入演示；也可以粘贴新闻链接或手动正文开始分析。</p>
                 </div>
-                <span class="source-drawer-toggle">展开线索入口</span>
+                <span class="source-drawer-toggle">展开启动入口</span>
               </summary>
               <div class="source-drawer-grid input-grid">
                 <label>
@@ -2580,7 +2730,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv, presets: LiveNewsPreset[]
                     <option value="manual" selected>手动文本</option>
                   </select>
                 </label>
-                <p class="mode-note">默认使用手动正文输入。支持站点：${escapeHtml(Object.values(SUPPORTED_NEWS_SOURCE_LABELS).join(' / '))}。手动模式下系统会基于正文自动生成展示标题；链接模式会提交到 /demo/live/session 并先执行导入。</p>
+                <p class="mode-note">默认使用手动正文输入。支持站点：${escapeHtml(Object.values(SUPPORTED_NEWS_SOURCE_LABELS).join(' / '))}。手动模式下系统会基于正文自动生成展示标题；链接模式会提交到 ${LIVE_PRODUCT_BASE_PATH}/session 并先执行导入。</p>
 
                 <label id="article-url-field">
                   文章链接
@@ -2911,6 +3061,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv, presets: LiveNewsPreset[]
         const entityPreview = document.getElementById('entity-preview');
         const credentialPreview = document.getElementById('credential-preview');
         const graphPreview = document.getElementById('graph-preview');
+        const sourceDrawer = document.getElementById('source-drawer');
         const graphModal = document.getElementById('graph-modal');
         const graphModalScrim = document.getElementById('graph-modal-scrim');
         const graphModalClose = document.getElementById('graph-modal-close');
@@ -3752,7 +3903,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv, presets: LiveNewsPreset[]
           }
         };
 
-        const buildGraphCardHeader = (expandable, zoomable = false) => \`
+        const buildGraphCardHeader = (expandable, zoomable = false, graphUrl = '') => \`
             <div class="graph-preview-header">
               <div class="graph-preview-meta">
                 <div class="stage-label">关系导航</div>
@@ -3763,6 +3914,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv, presets: LiveNewsPreset[]
                   ? '<button type="button" class="copy-button graph-zoom-button" data-graph-zoom="out" aria-label="缩小图谱">-</button><span id="graph-zoom-label" class="graph-zoom-label">100%</span><button type="button" class="copy-button graph-zoom-button" data-graph-zoom="in" aria-label="放大图谱">+</button><button type="button" class="copy-button graph-zoom-button" data-graph-zoom="reset" aria-label="重置图谱">重置</button>'
                   : ''}
                 \${expandable ? '<button type="button" class="copy-button graph-expand-button" data-graph-expand="true" data-testid="graph-expand-button">展开关系导航</button>' : ''}
+                \${expandable && graphUrl ? '<a class="copy-button graph-page-link" data-testid="graph-page-link" href="' + escapeText(graphUrl) + '">打开独立关系页</a>' : ''}
               </div>
             </div>
         \`;
@@ -3771,11 +3923,12 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv, presets: LiveNewsPreset[]
           const chartKey = options.chartKey ?? 'graphChart';
           const expandable = Boolean(options.expandable);
           const zoomable = Boolean(options.zoomable);
+          const graphUrl = options.graphUrl ?? '';
           const graphZoom = zoomable ? state.graphModalZoom : 1;
 
           disposeGraphChart(chartKey);
           container.innerHTML = \`
-            \${buildGraphCardHeader(expandable, zoomable)}
+            \${buildGraphCardHeader(expandable, zoomable, graphUrl)}
             <div class="graph-list \${zoomable ? 'zoomable' : ''}">
               <div class="graph-list-body" style="\${zoomable ? '--graph-list-zoom:' + graphZoom + ';' : ''}">
                 <div>
@@ -3808,6 +3961,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv, presets: LiveNewsPreset[]
           const canvasClass = options.canvasClass ?? 'graph-canvas';
           const expandable = Boolean(options.expandable);
           const zoomable = Boolean(options.zoomable);
+          const graphUrl = options.graphUrl ?? '';
 
           if (!session?.agentSession?.graph) {
             disposeGraphChart(chartKey);
@@ -3820,7 +3974,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv, presets: LiveNewsPreset[]
           const graphMode = getGraphPresentationMode(session);
 
           if (graphMode === 'list') {
-            renderGraphList(container, nodes, edges, { chartKey, expandable, zoomable });
+            renderGraphList(container, nodes, edges, { chartKey, expandable, zoomable, graphUrl });
             return;
           }
 
@@ -3831,14 +3985,14 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv, presets: LiveNewsPreset[]
           }
 
           container.innerHTML = \`
-            \${buildGraphCardHeader(expandable, zoomable)}
+            \${buildGraphCardHeader(expandable, zoomable, graphUrl)}
             <div id="\${canvasId}" class="\${canvasClass}" role="img" aria-label="Auxiliary relationship graph"></div>
           \`;
 
           const graphCanvas = document.getElementById(canvasId);
 
           if (!graphCanvas || !window.echarts) {
-            renderGraphList(container, nodes, edges, { chartKey, expandable, zoomable });
+            renderGraphList(container, nodes, edges, { chartKey, expandable, zoomable, graphUrl });
             return;
           }
 
@@ -3945,7 +4099,8 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv, presets: LiveNewsPreset[]
             chartKey: 'graphChart',
             canvasId: 'graph-canvas',
             canvasClass: 'graph-canvas',
-            expandable: true
+            expandable: true,
+            graphUrl: session?.graphUrl
           });
         };
 
@@ -4218,7 +4373,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv, presets: LiveNewsPreset[]
 
         const pollSession = async (sessionId) => {
           try {
-            const session = await fetchJson('/demo/live/session/' + sessionId);
+            const session = await fetchJson('${LIVE_PRODUCT_BASE_PATH}/session/' + sessionId);
 
             if (state.sessionId !== sessionId) {
               return;
@@ -4281,13 +4436,27 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv, presets: LiveNewsPreset[]
           void pollSession(sessionId);
         };
 
+        const focusWorkbenchResults = () => {
+          if (sourceDrawer) {
+            sourceDrawer.open = false;
+          }
+
+          requestAnimationFrame(() => {
+            overviewCard?.scrollIntoView({
+              block: 'start',
+              inline: 'nearest',
+              behavior: 'auto'
+            });
+          });
+        };
+
         const createSession = async (payload) => {
           formMessage.textContent = '正在创建分析任务...';
           formMessage.className = 'muted';
           setLaunchControlsDisabled(true);
 
           try {
-            const responsePayload = await fetchJson('/demo/live/session', {
+            const responsePayload = await fetchJson('${LIVE_PRODUCT_BASE_PATH}/session', {
               method: 'POST',
               body: JSON.stringify(payload)
             });
@@ -4296,11 +4465,13 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv, presets: LiveNewsPreset[]
               return;
             }
 
+            focusWorkbenchResults();
             startPolling(responsePayload.sessionId);
           } catch (error) {
             if (error?.status === 409 && error?.payload?.sessionId) {
               formMessage.textContent = '已有运行中的分析任务，已切回当前 session。';
               formMessage.className = 'muted';
+              focusWorkbenchResults();
               startPolling(error.payload.sessionId);
               return;
             }
@@ -4533,7 +4704,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv, presets: LiveNewsPreset[]
           updateView(null);
 
           try {
-            const active = await fetchJson('/demo/live/session/active');
+            const active = await fetchJson('${LIVE_PRODUCT_BASE_PATH}/session/active');
 
             if (active) {
               updateView(active);

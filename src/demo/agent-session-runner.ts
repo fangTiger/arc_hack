@@ -81,7 +81,7 @@ const createSessionId = (): string => `session-${Date.now()}-${randomUUID().slic
 
 const buildGraphUrl = (sessionId: string, runtimeEnv: RuntimeEnv, graphBaseUrl?: string): string => {
   const baseUrl = graphBaseUrl ?? runtimeEnv.gatewayBuyerBaseUrl ?? `http://127.0.0.1:${runtimeEnv.port}`;
-  return `${baseUrl.replace(/\/$/, '')}/demo/graph/${sessionId}`;
+  return `${baseUrl.replace(/\/$/, '')}/arc/sd/graph/${sessionId}`;
 };
 
 const priceToAtomicAmount = (price: Price): string => {

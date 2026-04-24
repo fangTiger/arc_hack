@@ -31,16 +31,18 @@ npm run dev
 - `POST /api/extract/summary`
 - `POST /api/extract/entities`
 - `POST /api/extract/relations`
-- `GET /demo/live`
-- `POST /demo/live/session`
-- `GET /demo/live/session/latest`
-- `GET /demo/live/session/:sessionId`
-- `GET /demo/graph/latest`
-- `GET /demo/graph/:sessionId`
+- `GET /arc/sd/live`
+- `POST /arc/sd/live/session`
+- `GET /arc/sd/live/session/latest`
+- `GET /arc/sd/live/session/:sessionId`
+- `GET /arc/sd/graph/latest`
+- `GET /arc/sd/graph/:sessionId`
 - `GET /ops/stats`
 
+兼容入口：旧的 `/demo`、`/demo/live` 与 `/demo/graph/*` 会返回 302 并跳转到对应的 `/arc/sd/*` 产品路径。
+
 工作台创建契约：
-- `POST /demo/live/session` 只接受二选一输入
+- `POST /arc/sd/live/session` 只接受二选一输入
 - 文本模式：`text` + 可选 `title` / `sourceType` / `metadata`
 - 链接模式：`articleUrl`
 - `text` 与 `articleUrl` 同时出现会返回 `400`
@@ -108,9 +110,9 @@ CLI 会打印：
 - `artifacts/agent-graph/latest.json`
 
 页面入口：
-- `GET /demo/live`
-- `GET /demo/graph/latest`
-- `GET /demo/graph/<sessionId>`
+- `GET /arc/sd/live`
+- `GET /arc/sd/graph/latest`
+- `GET /arc/sd/graph/<sessionId>`
 
 工作台输入模式：
 - `文章链接`：后端会先导入白名单原文，再创建 live session
@@ -161,13 +163,13 @@ npm run dev
 
 然后打开：
 ```bash
-http://127.0.0.1:3000/demo/live
+http://127.0.0.1:3000/arc/sd/live
 ```
 
 页面会：
 - 支持在 `文章链接 / 手动文本 / 预置卡片` 三种模式之间切换
-- 调用 `POST /demo/live/session`
-- 每秒轮询 `GET /demo/live/session/:sessionId`
+- 调用 `POST /arc/sd/live/session`
+- 每秒轮询 `GET /arc/sd/live/session/:sessionId`
 - 在 `mock` 路径下按 `summary -> entities -> relations` 逐步推进
 - 以 `事件总览 -> 关键判断 -> 证据摘录` 的固定主链路展示结果，并在右侧补充 graph 预览与 payment / receipt 证据
 - 预置卡片直接使用本地缓存导入结果，不依赖实时抓取远端网页
@@ -177,11 +179,11 @@ http://127.0.0.1:3000/demo/live
 推荐录屏路径：
 1. 先用 `预置卡片` 录一遍，证明脱网也能稳定运行。
 2. 在工作台首屏展示 `事件总览 -> 关键判断 -> 证据摘录` 的连续阅读链，以及失败/重跑时旧结果会保留的行为。
-3. 完成后切到 `GET /demo/graph/latest`，展示来源元数据、`importStatus` / `cachedAt` 和 `derived` 连通性说明。
+3. 完成后切到 `GET /arc/sd/graph/latest`，展示来源元数据、`importStatus` / `cachedAt` 和 `derived` 连通性说明。
 4. 如果现场网络稳定，再补录一条 `文章链接` 模式，使用白名单来源 URL。
 
 边界：
-- `GET /demo/live/session/latest` 无命中时固定返回 `404`
+- `GET /arc/sd/live/session/latest` 无命中时固定返回 `404`
 - 若已有 `queued` 或 `running` 的 active live session，再次创建会返回 `409` 和当前 `sessionId`
 - `active live session` 的定义仅为 `queued` 或 `running`
 
@@ -249,7 +251,7 @@ PAYMENT_MODE=gateway RECEIPT_MODE=arc npm run dev
 
 再打开：
 ```bash
-http://127.0.0.1:3000/demo/live
+http://127.0.0.1:3000/arc/sd/live
 ```
 
 这里的边界必须明确：

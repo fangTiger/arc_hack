@@ -54,6 +54,9 @@ export const createPaymentAdapter = (runtimeEnv: Pick<RuntimeEnv, 'paymentMode' 
   return new MockPaymentAdapter();
 };
 
+const PRODUCT_BASE_PATH = '/arc/sd';
+const LEGACY_DEMO_BASE_PATH = '/demo';
+
 export const createApp = (options: CreateAppOptions = {}) => {
   const runtimeEnv = options.runtimeEnv ?? getRuntimeEnv();
   const callLogStore = options.callLogStore ?? new FileCallLogStore(runtimeEnv.callLogPath);
@@ -84,6 +87,15 @@ export const createApp = (options: CreateAppOptions = {}) => {
         })
       : undefined;
   const app = express();
+  const graphRouter = createGraphRouter({
+    agentGraphStore,
+    runtimeEnv
+  });
+  const liveRouter = createLiveRouter({
+    liveSessionService,
+    runtimeEnv,
+    newsImporter
+  });
 
   app.use(express.json());
   app.use(
@@ -96,21 +108,25 @@ export const createApp = (options: CreateAppOptions = {}) => {
       requestIdFactory: options.requestIdFactory
     })
   );
-  app.use(
-    '/demo/graph',
-    createGraphRouter({
-      agentGraphStore,
-      runtimeEnv
-    })
-  );
-  app.use(
-    '/demo/live',
-    createLiveRouter({
-      liveSessionService,
-      runtimeEnv,
-      newsImporter
-    })
-  );
+  app.get(LEGACY_DEMO_BASE_PATH, (_request, response) => {
+    response.redirect(302, `${PRODUCT_BASE_PATH}/live`);
+  });
+  app.get(`${LEGACY_DEMO_BASE_PATH}/live`, (_request, response) => {
+    response.redirect(302, `${PRODUCT_BASE_PATH}/live`);
+  });
+  app.get(`${LEGACY_DEMO_BASE_PATH}/graph/latest`, (_request, response) => {
+    response.redirect(302, `${PRODUCT_BASE_PATH}/graph/latest`);
+  });
+  app.get(`${LEGACY_DEMO_BASE_PATH}/graph/:sessionId`, (request, response) => {
+    response.redirect(302, `${PRODUCT_BASE_PATH}/graph/${encodeURIComponent(request.params.sessionId)}`);
+  });
+  app.get(PRODUCT_BASE_PATH, (_request, response) => {
+    response.redirect(302, `${PRODUCT_BASE_PATH}/live`);
+  });
+  app.use(`${PRODUCT_BASE_PATH}/graph`, graphRouter);
+  app.use(`${PRODUCT_BASE_PATH}/live`, liveRouter);
+  app.use(`${LEGACY_DEMO_BASE_PATH}/graph`, graphRouter);
+  app.use(`${LEGACY_DEMO_BASE_PATH}/live`, liveRouter);
   app.use('/ops', createOpsRouter({ callLogStore }));
 
   app.get('/healthz', (_request, response) => {

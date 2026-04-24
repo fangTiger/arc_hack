@@ -6,8 +6,8 @@
 
 At a high level, the system has four layers:
 
-1. **Experience layer**: browser users access `/demo/live` and `/demo/graph/*`, while operators can run CLI demos for mock runs, gateway buyer flows, and agent sessions.
-2. **Application layer**: the Express app exposes `/api/extract/*`, `/demo/live`, `/demo/graph/*`, `/ops`, and `/healthz`.
+1. **Experience layer**: browser users access `/arc/sd/live` and `/arc/sd/graph/*`, while operators can run CLI demos for mock runs, gateway buyer flows, and agent sessions.
+2. **Application layer**: the Express app exposes `/api/extract/*`, `/arc/sd/live`, `/arc/sd/graph/*`, `/ops`, and `/healthz`.
 3. **Domain layer**: payment, extraction, whitelist news import, live session orchestration, and receipt writing are split into focused modules.
 4. **Evidence layer**: local artifacts, call logs, session snapshots, and optional Arc `UsageReceipt` transactions provide a traceable record of what happened and what was paid for.
 
@@ -15,8 +15,8 @@ At a high level, the system has four layers:
 
 ```mermaid
 flowchart LR
-    User["User / Operator"] --> Live["/demo/live"]
-    User --> Graph["/demo/graph/:sessionId"]
+    User["User / Operator"] --> Live["/arc/sd/live"]
+    User --> Graph["/arc/sd/graph/:sessionId"]
     User --> CLI["CLI Runners"]
 
     Live --> App["Express App"]
@@ -24,8 +24,8 @@ flowchart LR
     CLI --> App
 
     App --> Extract["/api/extract/*"]
-    App --> LiveRoute["/demo/live route"]
-    App --> GraphRoute["/demo/graph route"]
+    App --> LiveRoute["/arc/sd/live route"]
+    App --> GraphRoute["/arc/sd/graph route"]
     App --> Ops["/ops + /healthz"]
 
     Extract --> Payment["Payment Domain"]
@@ -51,8 +51,8 @@ flowchart LR
 ### Entry Points
 
 - `README.md` points new readers to the quick start, runbooks, and judge-facing docs.
-- `/demo/live` is the main product surface. It presents the system as a decision desk rather than a raw demo console.
-- `/demo/graph/latest` and `/demo/graph/:sessionId` expose the graph and evidence view for a completed session.
+- `/arc/sd/live` is the main product surface. It presents the system as a decision desk rather than a raw demo console.
+- `/arc/sd/graph/latest` and `/arc/sd/graph/:sessionId` expose the graph and evidence view for a completed session.
 - CLI scripts under `scripts/` run repeatable demos for mock calls, gateway buyer runs, and agent-session generation.
 
 ### Application Layer
@@ -102,7 +102,7 @@ flowchart TD
     Relations --> Desk
 
     Relations --> Graph["Graph session artifact"]
-    Graph --> GraphPage["/demo/graph/:sessionId"]
+    Graph --> GraphPage["/arc/sd/graph/:sessionId"]
 
     Summary --> Receipt["Optional Arc receipt"]
     Entities --> Receipt

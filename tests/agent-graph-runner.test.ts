@@ -57,7 +57,7 @@ describe('runAgentGraphSession', () => {
 
     expect(result.sessionId).toBe('session-mock');
     expect(result.artifactPath).toBe(join(artifactRootDirectory, 'session-mock', 'session.json'));
-    expect(result.graphUrl).toBe('http://127.0.0.1:4010/demo/graph/session-mock');
+    expect(result.graphUrl).toBe('http://127.0.0.1:4010/arc/sd/graph/session-mock');
     expect(result.session).toMatchObject({
       sessionId: 'session-mock',
       source,
@@ -224,7 +224,7 @@ describe('runAgentGraphSession', () => {
       }
     });
 
-    expect(result.graphUrl).toBe('http://127.0.0.1:3000/demo/graph/session-gateway');
+    expect(result.graphUrl).toBe('http://127.0.0.1:3000/arc/sd/graph/session-gateway');
     expect(result.session.source.metadata).toEqual({
       importMode: 'manual'
     });

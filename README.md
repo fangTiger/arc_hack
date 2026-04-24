@@ -40,8 +40,8 @@
 ### 核心能力
 
 - 付费知识抽取 API：`summary` / `entities` / `relations`
-- live workbench：`/demo/live`
-- graph 浏览页：`/demo/graph/latest` 与 `/demo/graph/:sessionId`
+- live workbench：`/arc/sd/live`
+- graph 浏览页：`/arc/sd/graph/latest` 与 `/arc/sd/graph/:sessionId`
 - whitelist 新闻链接导入：支持受限来源的文章分析
 - gateway buyer runner：演示真实 buyer -> seller 的付费链路
 - Arc `UsageReceipt` 合约：为成功动作补充链上凭证
@@ -64,9 +64,11 @@ npm run dev
 默认入口：
 
 ```text
-http://127.0.0.1:3000/demo/live
-http://127.0.0.1:3000/demo/graph/latest
+http://127.0.0.1:3000/arc/sd/live
+http://127.0.0.1:3000/arc/sd/graph/latest
 ```
+
+旧的 `/demo/*` 入口仍保留 302 跳转，方便已有录屏脚本或书签平滑迁移。
 
 ### 演示路径
 
@@ -128,8 +130,8 @@ npm run demo:agent:gateway
 The project combines:
 
 - paid extraction APIs for `summary`, `entities`, and `relations`
-- a live decision desk at `/demo/live`
-- a graph browser at `/demo/graph/*`
+- a live decision desk at `/arc/sd/live`
+- a graph browser at `/arc/sd/graph/*`
 - optional Arc `UsageReceipt` transactions for extra on-chain evidence
 
 ### Why It Fits The Theme
@@ -159,9 +161,11 @@ npm run dev
 Default URLs:
 
 ```text
-http://127.0.0.1:3000/demo/live
-http://127.0.0.1:3000/demo/graph/latest
+http://127.0.0.1:3000/arc/sd/live
+http://127.0.0.1:3000/arc/sd/graph/latest
 ```
+
+Legacy `/demo/*` URLs still redirect to the branded product routes for old bookmarks and recording scripts.
 
 ### Demo Paths
 

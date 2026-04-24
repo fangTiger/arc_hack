@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 
 test('should complete a preset-driven analysis and support detail and graph overlays', async ({ page }) => {
-  await page.goto('/demo/live');
+  await page.goto('/arc/sd/live');
 
   await expect(page.getByRole('heading', { name: 'Arc Signal Desk' })).toBeVisible();
 
@@ -15,6 +15,11 @@ test('should complete a preset-driven analysis and support detail and graph over
   await expect(page.locator('#control-step-graph')).toHaveAttribute('data-stage-status', 'completed');
   await expect(page.locator('#event-headline')).toContainText('PANews：某协议完成 5000 万美元融资');
   await expect(page.locator('.deep-reading-block')).toHaveCount(3);
+  await expect(page.locator('#source-drawer')).not.toHaveAttribute('open', '');
+
+  const completedOverviewBox = await page.locator('#overview-card').boundingBox();
+  expect(completedOverviewBox).not.toBeNull();
+  expect(completedOverviewBox!.y).toBeLessThan(900);
 
   await page.getByTestId('judgment-card-0').click();
   await expect(page.locator('#detail-drawer')).toHaveAttribute('aria-hidden', 'false');
@@ -31,10 +36,26 @@ test('should complete a preset-driven analysis and support detail and graph over
   await expect(page.locator('#graph-zoom-label')).toHaveText('115%');
   await page.getByRole('button', { name: '重置图谱' }).click();
   await expect(page.locator('#graph-zoom-label')).toHaveText('100%');
+
+  await page.locator('#graph-modal-close').click();
+  await expect(page.getByRole('link', { name: '打开独立关系页' })).toHaveAttribute('href', /\/arc\/sd\/graph\//);
+});
+
+test('should keep launch controls and the executive summary in the desktop first fold', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/arc/sd/live');
+
+  const sourceDrawerBox = await page.locator('#source-drawer').boundingBox();
+  const overviewBox = await page.locator('#overview-card').boundingBox();
+
+  expect(sourceDrawerBox).not.toBeNull();
+  expect(overviewBox).not.toBeNull();
+  expect(sourceDrawerBox!.y).toBeLessThan(500);
+  expect(overviewBox!.y).toBeLessThan(500);
 });
 
 test('should default to light theme and allow manual theme switching', async ({ page }) => {
-  await page.goto('/demo/live');
+  await page.goto('/arc/sd/live');
 
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   await expect(page.getByText('The Economic OS')).toBeVisible();
@@ -52,7 +73,7 @@ test('should default to light theme and allow manual theme switching', async ({ 
 });
 
 test('should retain the previous result until a slow re-run replaces it', async ({ page }) => {
-  await page.goto('/demo/live');
+  await page.goto('/arc/sd/live');
 
   await page.getByTestId('source-drawer-toggle').click();
   await page.getByTestId('preset-launch-panews-funding-round').click();
@@ -60,6 +81,7 @@ test('should retain the previous result until a slow re-run replaces it', async 
   await expect(page.locator('#overall-status-label')).toHaveText('分析完成');
   await expect(page.getByTestId('judgment-card-0')).toContainText('初步归类为融资');
 
+  await page.getByTestId('source-drawer-toggle').click();
   await page.locator('#text-input').fill(
     [
       '某协议宣布推出支付清算新产品，并计划在下季度扩大机构服务覆盖。',
@@ -90,7 +112,7 @@ test('should retain the previous result until a slow re-run replaces it', async 
 });
 
 test('should replay gateway progress copy and credentials in the browser', async ({ page }) => {
-  await page.goto('/demo/live');
+  await page.goto('/arc/sd/live');
 
   await page.getByTestId('source-drawer-toggle').click();
   await page.locator('#text-input').fill(
@@ -114,7 +136,7 @@ test('should replay gateway progress copy and credentials in the browser', async
 });
 
 test('should expose recommended trial links in the source drawer', async ({ page }) => {
-  await page.goto('/demo/live');
+  await page.goto('/arc/sd/live');
 
   await page.getByTestId('source-drawer-toggle').click();
   await expect(page.getByText('推荐试跑链接')).toBeVisible();
@@ -122,7 +144,7 @@ test('should expose recommended trial links in the source drawer', async ({ page
 });
 
 test('should fill a recommended trial link into link mode with one click', async ({ page }) => {
-  await page.goto('/demo/live');
+  await page.goto('/arc/sd/live');
 
   await page.getByTestId('source-drawer-toggle').click();
   await page.getByTestId('trial-fill-button-0').click();
@@ -136,8 +158,19 @@ test.describe('mobile overlays', () => {
     viewport: { width: 390, height: 844 }
   });
 
+  test('should expose the executive summary within the initial mobile viewport', async ({ page }) => {
+    await page.goto('/arc/sd/live');
+
+    const sourceDrawerBox = await page.locator('#source-drawer').boundingBox();
+    const overviewBox = await page.locator('#overview-card').boundingBox();
+    expect(sourceDrawerBox).not.toBeNull();
+    expect(overviewBox).not.toBeNull();
+    expect(sourceDrawerBox!.y).toBeLessThan(844);
+    expect(overviewBox!.y).toBeLessThan(844);
+  });
+
   test('should render detail and graph overlays in mobile full-screen mode', async ({ page }) => {
-    await page.goto('/demo/live');
+    await page.goto('/arc/sd/live');
 
     await page.getByTestId('source-drawer-toggle').click();
     await page.getByTestId('preset-launch-panews-funding-round').click();

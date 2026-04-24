@@ -159,8 +159,8 @@ node --import tsx scripts/agent-graph-runner.ts
 - `graphUrl`
 
 如果 seller 与 CLI 在同一仓库根目录运行，可直接访问：
-- `GET /demo/graph/latest`
-- `GET /demo/graph/<sessionId>`
+- `GET /arc/sd/graph/latest`
+- `GET /arc/sd/graph/<sessionId>`
 
 graph 页面现在还会补充展示导入来源 metadata：
 - 原始链接 `articleUrl`
@@ -172,7 +172,7 @@ graph 页面现在还会补充展示导入来源 metadata：
 ## 6.5 录制 live console
 启动 seller 后直接打开：
 ```bash
-http://127.0.0.1:3000/demo/live
+http://127.0.0.1:3000/arc/sd/live
 ```
 
 推荐做法：
@@ -193,7 +193,7 @@ http://127.0.0.1:3000/demo/live
 
 推荐录屏路径：
 1. 先用 `预置卡片` 录一段，突出“脱网也能演示”的稳定性。
-2. 完成后切到 `GET /demo/graph/latest`，展示来源元数据、`importStatus` / `cachedAt`、可复制字段和可点击原文链接。
+2. 完成后切到 `GET /arc/sd/graph/latest`，展示来源元数据、`importStatus` / `cachedAt`、可复制字段和可点击原文链接。
 3. 如网络稳定，再补一段 `文章链接` 模式，输入白名单新闻 URL，展示导入到图谱的完整路径。
 
 相关产物：
@@ -203,14 +203,14 @@ http://127.0.0.1:3000/demo/live
 
 ## 7. 推荐的黑客松演示顺序
 1. 先演示 `npm run demo:mock`，证明 API / 统计 / 批量调用可运行
-2. 再演示 `http://127.0.0.1:3000/demo/live`，优先用 `预置卡片` 录一段逐步推进的单页 live console
+2. 再演示 `http://127.0.0.1:3000/arc/sd/live`，优先用 `预置卡片` 录一段逐步推进的单页 live console
 3. 再演示 `DEMO_REPEAT_COUNT=6 npm run demo:receipt:mock`，产出 `54` 次成功调用和 `54` 笔 receipt hash，说明 receipt 层如何把调用映射到链上凭证
 4. 启动 `PAYMENT_MODE=gateway npm run dev`，展示 seller 返回官方 `402`
 5. 再跑真实 buyer：
    `DEMO_ARTIFACT_DIR=artifacts/gateway-run node --import tsx scripts/gateway-buyer-runner.ts`
 6. 再跑真实 agent graph：
    `DEMO_ARTIFACT_DIR=artifacts/agent-graph node --import tsx scripts/agent-graph-runner.ts`
-7. 最后回到 `http://127.0.0.1:3000/demo/live`，如网络稳定可补一段 `文章链接` 模式；随后切到 graph 页面展示来源元数据与最终证据
+7. 最后回到 `http://127.0.0.1:3000/arc/sd/live`，如网络稳定可补一段 `文章链接` 模式；随后切到 graph 页面展示来源元数据与最终证据
 8. 最后切到真实 Arc receipt：
    `RECEIPT_MODE=arc DEMO_ARTIFACT_DIR=artifacts/agent-graph node --import tsx scripts/agent-graph-runner.ts`
 

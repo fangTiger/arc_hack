@@ -10,7 +10,8 @@ type CreateGraphRouterOptions = {
   runtimeEnv: RuntimeEnv;
 };
 
-const LIVE_BRAND_LOGO_URL = '/demo/live/brand/logo.png';
+const LIVE_PRODUCT_URL = '/arc/sd/live';
+const LIVE_BRAND_LOGO_URL = `${LIVE_PRODUCT_URL}/brand/logo.png`;
 
 const escapeHtml = (value: string): string => {
   return value
@@ -448,7 +449,7 @@ const renderGraphPage = (session: AgentSession): string => {
           <div class="eyebrow">关系导航器</div>
           <h1>${escapeHtml(session.source.title ?? session.sessionId)}</h1>
           <p class="summary">独立 graph 页面只负责关系导航，不承担结果主阅读。需要完整结论时，请回到 Arc Signal Desk 沿“执行摘要 -> 核心结论 -> 证据锚点”继续查看。</p>
-          <a class="return-link" href="/demo/live">返回 Arc Signal Desk</a>
+          <a class="return-link" href="${LIVE_PRODUCT_URL}">返回 Arc Signal Desk</a>
         </section>
 
         <section class="layout">

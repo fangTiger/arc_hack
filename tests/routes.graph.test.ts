@@ -120,15 +120,15 @@ describe('createGraphRouter', () => {
 
     const response = await invokeApp(app, {
       method: 'GET',
-      path: '/demo/graph/latest'
+      path: '/arc/sd/graph/latest'
     });
 
     expect(response.statusCode).toBe(200);
     expect(response.text).toContain('session-graph');
-    expect(response.text).toContain('/demo/live/brand/logo.png');
+    expect(response.text).toContain('/arc/sd/live/brand/logo.png');
     expect(response.text).toContain('The Economic OS');
     expect(response.text).toContain('返回 Arc Signal Desk');
-    expect(response.text).toContain('/demo/live');
+    expect(response.text).toContain('/arc/sd/live');
     expect(response.text).toContain('graph-canvas');
     expect(response.text).toContain('cdn.jsdelivr.net/npm/echarts@5');
     expect(response.text).toContain('roam: true');
@@ -159,6 +159,18 @@ describe('createGraphRouter', () => {
     expect(response.text).not.toContain('0xb716431da93f68d44743c4348da003f1c86a69497fa20bc583f6e6c8e6fbbdd8');
   });
 
+  it('should redirect the old graph page URL to the branded product route', async () => {
+    const app = await createTestApp();
+
+    const response = await invokeApp(app, {
+      method: 'GET',
+      path: '/demo/graph/latest'
+    });
+
+    expect(response.statusCode).toBe(302);
+    expect(response.headers.location).toBe('/arc/sd/graph/latest');
+  });
+
   it('should surface import status, cachedAt and derived edge guidance when present', async () => {
     const app = await createTestAppWithSessions([
       createSession({
@@ -180,7 +192,7 @@ describe('createGraphRouter', () => {
 
     const response = await invokeApp(app, {
       method: 'GET',
-      path: '/demo/graph/session-cache'
+      path: '/arc/sd/graph/session-cache'
     });
 
     expect(response.statusCode).toBe(200);
@@ -207,11 +219,11 @@ describe('createGraphRouter', () => {
 
     const okResponse = await invokeApp(app, {
       method: 'GET',
-      path: '/demo/graph/session-legacy'
+      path: '/arc/sd/graph/session-legacy'
     });
     const missingResponse = await invokeApp(app, {
       method: 'GET',
-      path: '/demo/graph/missing'
+      path: '/arc/sd/graph/missing'
     });
 
     expect(okResponse.statusCode).toBe(200);
