@@ -99,6 +99,68 @@ PAYMENT_MODE=gateway npm run dev
 npm run demo:agent:gateway
 ```
 
+### Arc standards proof runners
+
+如果你要补充官方标准型链上证据，现在有两条路径：
+
+- UI：启动 `npm run dev` 后，打开 `http://127.0.0.1:3000/arc/sd/live`，在 `Arc Proof Console` 面板里点击 `创建 Agent Proof` 或 `创建 Job Proof`
+- CLI：继续使用两条独立 runner
+
+```bash
+npm run arc:erc8004
+npm run arc:erc8183
+```
+
+服务端同时暴露：
+
+- `GET /api/arc/proofs/status`
+- `POST /api/arc/proofs/erc8004`
+- `POST /api/arc/proofs/erc8183`
+
+注意：proof console 的链上广播默认关闭；只有在服务端显式设置 `ARC_PROOF_CONSOLE_ENABLED=true` 时，UI 和 `POST /api/arc/proofs/*` 才允许执行。`GET /api/arc/proofs/status` 会返回 `runEnabled` 供页面展示当前开关状态。
+
+必需环境变量见 `.env.example`，重点包括：
+
+- `ARC_PROOF_CONSOLE_ENABLED=true`
+- `ARC_RPC_URL`
+- `ARC_AGENT_OWNER_PRIVATE_KEY`
+- `ARC_AGENT_VALIDATOR_PRIVATE_KEY`
+- `ARC_AGENT_METADATA_URI`
+- `ARC_JOB_CLIENT_PRIVATE_KEY`
+- `ARC_JOB_PROVIDER_PRIVATE_KEY`
+- `ARC_JOB_BUDGET_USDC`
+
+默认产物：
+
+- `artifacts/arc-standards/erc8004-agent.json`
+- `artifacts/arc-standards/erc8183-job.json`
+
+artifact 会保留 `txHash`、`jobId` / `agentId` 和 ArcScan 链接字段，但不会写入私钥。私钥只允许服务端从环境变量读取，不会出现在浏览器请求体、页面 HTML、JSON 响应或 proof status 摘要中。
+
+### Circle Console proof
+
+为了把 Arc 上已部署的 `UsageReceipt` 合约和 Circle Developer Console 账号关联起来，项目提供了 Circle Console proof 路径：
+
+- UI：启动 `npm run dev` 后，打开 `http://127.0.0.1:3000/arc/sd/live`，在 `Circle Console Proof` 面板点击 `同步 Circle Console`
+- CLI：运行 `npm run circle:console`
+
+服务端 API：
+
+- `GET /api/circle/console/status`
+- `POST /api/circle/console/proof`
+
+必需环境变量：
+
+- `CIRCLE_API_KEY`
+- `USAGE_RECEIPT_ADDRESS`
+- `CIRCLE_CONSOLE_PROOF_ENABLED=true`，仅 UI / POST API 需要；CLI 可直接运行
+
+默认产物：
+
+- `artifacts/circle-console/proof.json`
+
+这个 runner 会读取 Circle Wallets / Contracts，并在 Contracts library 缺少当前 `UsageReceipt` 时执行 import。artifact 只保存 `walletCount`、`contractCount`、`contractId`、合约地址和 requestId，不保存 API key。`CIRCLE_ENTITY_SECRET` 只在创建/管理 Circle 托管钱包时需要；`KIT_KEY` 是前端 App Kit key，本项目当前 Console proof 不需要它。
+
 ### 文档导航
 
 - [Architecture](docs/architecture.md)
@@ -195,6 +257,62 @@ Real gateway agent session:
 PAYMENT_MODE=gateway npm run dev
 npm run demo:agent:gateway
 ```
+
+### Arc standards proof runners
+
+For official standards-style onchain proof, there are now two paths:
+
+- UI: start `npm run dev`, open `http://127.0.0.1:3000/arc/sd/live`, then use the `Arc Proof Console` buttons
+- CLI: keep using the dedicated runners
+
+```bash
+npm run arc:erc8004
+npm run arc:erc8183
+```
+
+The server also exposes:
+
+- `GET /api/arc/proofs/status`
+- `POST /api/arc/proofs/erc8004`
+- `POST /api/arc/proofs/erc8183`
+
+The proof console is off by default. Set `ARC_PROOF_CONSOLE_ENABLED=true` on the server before using the UI buttons or the proof POST endpoints. `GET /api/arc/proofs/status` also reports `runEnabled` for the live page.
+
+Required environment variables are documented in `.env.example`, especially:
+
+- `ARC_RPC_URL`
+- `ARC_AGENT_OWNER_PRIVATE_KEY`
+- `ARC_AGENT_VALIDATOR_PRIVATE_KEY`
+- `ARC_AGENT_METADATA_URI`
+- `ARC_JOB_CLIENT_PRIVATE_KEY`
+- `ARC_JOB_PROVIDER_PRIVATE_KEY`
+
+### Circle Console proof
+
+To bind the deployed Arc `UsageReceipt` contract to the Circle Developer Console account:
+
+- UI: start `npm run dev`, open `http://127.0.0.1:3000/arc/sd/live`, then use the `Circle Console Proof` button
+- CLI: run `npm run circle:console`
+
+Server APIs:
+
+- `GET /api/circle/console/status`
+- `POST /api/circle/console/proof`
+
+Required env vars:
+
+- `CIRCLE_API_KEY`
+- `USAGE_RECEIPT_ADDRESS`
+- `CIRCLE_CONSOLE_PROOF_ENABLED=true` for UI / POST execution
+
+The default artifact is `artifacts/circle-console/proof.json`. It stores non-secret proof data such as Wallets / Contracts counts, Circle contract id, contract address, and request ids. It never stores the API key. `CIRCLE_ENTITY_SECRET` is only needed for managed wallet flows, and `KIT_KEY` is only needed for frontend App Kit usage.
+
+Default artifacts:
+
+- `artifacts/arc-standards/erc8004-agent.json`
+- `artifacts/arc-standards/erc8183-job.json`
+
+The artifacts include tx hashes, `agentId` / `jobId`, and ArcScan links, without persisting private keys. Private keys stay server-side in environment variables and are excluded from browser payloads, HTML, JSON responses, and proof summaries.
 
 ### Documentation
 

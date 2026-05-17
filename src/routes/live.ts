@@ -121,10 +121,15 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> =>
 const isValidSourceType = (value: unknown): value is SourceType =>
   value === undefined || value === 'news' || value === 'research';
 
-const isValidHttpUrl = (value: string): boolean => {
+export const isSafeHttpUrl = (value: string | null | undefined): boolean => {
+  if (typeof value !== 'string') {
+    return false;
+  }
+
   try {
     const parsedUrl = new URL(value);
-    return parsedUrl.protocol === 'http:' || parsedUrl.protocol === 'https:';
+    const protocol = parsedUrl.protocol.toLowerCase();
+    return protocol === 'http:' || protocol === 'https:';
   } catch {
     return false;
   }
@@ -159,7 +164,7 @@ const normalizeMetadata = (
   const sourceSite = trimToUndefined(metadata.sourceSite);
   const importMode = trimToUndefined(metadata.importMode);
 
-  if (articleUrl && !isValidHttpUrl(articleUrl)) {
+  if (articleUrl && !isSafeHttpUrl(articleUrl)) {
     return {
       ok: false,
       message: 'metadata.articleUrl 必须是合法的 http/https URL。'
@@ -236,7 +241,7 @@ const parseCreateSessionBody = (body: CreateSessionBody): ParsedCreateSessionBod
   }
 
   if (articleUrl) {
-    if (!isValidHttpUrl(articleUrl)) {
+    if (!isSafeHttpUrl(articleUrl)) {
       return {
         kind: 'invalid',
         message: 'articleUrl 必须是合法的 http/https URL。'
@@ -1939,6 +1944,169 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv, presets: LiveNewsPreset[]
           gap: 20px;
         }
 
+        .proof-console {
+          display: grid;
+          gap: 18px;
+          margin-bottom: 20px;
+          padding: 22px;
+        }
+
+        .proof-console-header {
+          display: flex;
+          justify-content: space-between;
+          gap: 18px;
+          align-items: flex-start;
+          flex-wrap: wrap;
+        }
+
+        .proof-console-header h2 {
+          margin: 0;
+          font-size: clamp(1.25rem, 2vw, 1.65rem);
+        }
+
+        .proof-console-header p {
+          margin: 6px 0 0;
+          color: var(--muted);
+          line-height: 1.55;
+          max-width: 72ch;
+        }
+
+        .proof-console-status {
+          min-width: 260px;
+          padding: 12px 14px;
+          border-radius: 18px;
+          border: 1px solid rgba(94, 234, 212, 0.16);
+          background: rgba(7, 14, 24, 0.72);
+          color: var(--ink-strong);
+          line-height: 1.45;
+        }
+
+        .proof-console-grid {
+          display: grid;
+          grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
+          gap: 16px;
+        }
+
+        .proof-column {
+          display: grid;
+          gap: 14px;
+          min-width: 0;
+        }
+
+        .proof-status-list,
+        .proof-endpoint-list,
+        .proof-result-panel {
+          display: grid;
+          gap: 12px;
+          padding: 16px;
+          border-radius: 20px;
+          border: 1px solid rgba(100, 116, 139, 0.18);
+          background: rgba(7, 14, 24, 0.76);
+        }
+
+        .proof-status-row {
+          display: grid;
+          gap: 6px;
+          padding-bottom: 12px;
+          border-bottom: 1px solid rgba(100, 116, 139, 0.16);
+        }
+
+        .proof-status-row:last-child {
+          padding-bottom: 0;
+          border-bottom: none;
+        }
+
+        .proof-status-row strong {
+          color: var(--ink-strong);
+        }
+
+        .proof-status-row p,
+        .proof-result-panel p {
+          margin: 0;
+          color: var(--muted);
+          line-height: 1.5;
+        }
+
+        .proof-status-value {
+          font-family: "SFMono-Regular", "Menlo", monospace;
+          font-size: 12px;
+          color: var(--accent);
+          word-break: break-word;
+        }
+
+        .proof-endpoint-list ul {
+          margin: 0;
+          padding-left: 18px;
+        }
+
+        .proof-endpoint-list li {
+          color: var(--muted);
+          line-height: 1.6;
+        }
+
+        .proof-endpoint-list code,
+        .proof-result-panel code {
+          font-family: "SFMono-Regular", "Menlo", monospace;
+          font-size: 12px;
+          color: var(--ink-strong);
+        }
+
+        .proof-actions {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px;
+        }
+
+        .proof-actions button {
+          min-height: 44px;
+        }
+
+        .proof-actions button:disabled {
+          opacity: 0.7;
+          cursor: progress;
+        }
+
+        .proof-result-panel a {
+          color: var(--accent-strong);
+        }
+
+        .proof-result-meta {
+          display: grid;
+          gap: 8px;
+        }
+
+        .proof-result-title {
+          font-size: 15px;
+          color: var(--ink-strong);
+        }
+
+        .proof-result-line {
+          color: var(--muted);
+          font-size: 13px;
+          line-height: 1.55;
+          word-break: break-word;
+        }
+
+        html[data-theme="light"] .proof-console-status,
+        html[data-theme="light"] .proof-status-list,
+        html[data-theme="light"] .proof-endpoint-list,
+        html[data-theme="light"] .proof-result-panel {
+          background:
+            linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(244, 249, 255, 0.92));
+          box-shadow: 0 16px 34px rgba(15, 23, 42, 0.08);
+        }
+
+        html[data-theme="light"] .proof-console-status,
+        html[data-theme="light"] .proof-status-list,
+        html[data-theme="light"] .proof-endpoint-list,
+        html[data-theme="light"] .proof-result-panel {
+          border-color: rgba(77, 94, 117, 0.14);
+        }
+
+        html[data-theme="light"] .proof-status-value {
+          color: #0f766e;
+        }
+
         .workbench-main,
         .workbench-sidebar {
           display: grid;
@@ -2707,6 +2875,98 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv, presets: LiveNewsPreset[]
           </div>
         </section>
 
+        <section id="arc-proof-console" class="panel proof-console" aria-labelledby="arc-proof-console-title">
+          <div class="proof-console-header">
+            <div>
+              <div class="section-kicker">Builder Proofs</div>
+              <h2 id="arc-proof-console-title">Arc Proof Console</h2>
+              <p>从当前服务端环境变量触发 ERC-8004 与 ERC-8183 proof。私钥只保留在服务端，不会进入浏览器请求、HTML、JSON 响应或摘要面板。</p>
+            </div>
+            <div id="arc-proof-console-state" class="proof-console-status">等待读取 proof 配置状态。</div>
+          </div>
+          <div class="proof-console-grid">
+            <div class="proof-column">
+              <section class="proof-status-list" aria-label="Proof 配置状态">
+                <div class="proof-status-row">
+                  <strong>ERC-8004 Agent Proof</strong>
+                  <p>读取 ARC agent 配置并展示最近一次 artifact 摘要。</p>
+                  <div id="arc-proof-erc8004-status" class="proof-status-value">待检测</div>
+                </div>
+                <div class="proof-status-row">
+                  <strong>ERC-8183 Job Proof</strong>
+                  <p>读取 ARC job 配置并展示最近一次 artifact 摘要。</p>
+                  <div id="arc-proof-erc8183-status" class="proof-status-value">待检测</div>
+                </div>
+              </section>
+              <section class="proof-endpoint-list" aria-label="Proof API Paths">
+                <strong>API Paths</strong>
+                <ul>
+                  <li><code>/api/arc/proofs/status</code></li>
+                  <li><code>/api/arc/proofs/erc8004</code></li>
+                  <li><code>/api/arc/proofs/erc8183</code></li>
+                </ul>
+                <p>要从 UI 触发链上 proof，需要在服务端显式设置 <code>ARC_PROOF_CONSOLE_ENABLED=true</code>。</p>
+              </section>
+            </div>
+            <div class="proof-column">
+              <div class="proof-actions">
+                <button id="run-erc8004-proof" class="secondary" type="button" disabled>创建 Agent Proof</button>
+                <button id="run-erc8183-proof" class="secondary" type="button" disabled>创建 Job Proof</button>
+              </div>
+              <div id="arc-proof-feedback" class="mode-note">页面加载后会自动读取 status；若未启用，请设置 ARC_PROOF_CONSOLE_ENABLED=true。CLI 仍可继续使用。</div>
+              <section id="arc-proof-last-result" class="proof-result-panel" aria-live="polite">
+                <strong>最近结果</strong>
+                <p>尚未加载 proof artifact。</p>
+              </section>
+            </div>
+          </div>
+        </section>
+
+        <section id="circle-console-proof" class="panel proof-console" aria-labelledby="circle-console-proof-title">
+          <div class="proof-console-header">
+            <div>
+              <div class="section-kicker">Circle Console</div>
+              <h2 id="circle-console-proof-title">Circle Console Proof</h2>
+              <p>用服务端 Circle API key 同步 Wallets / Contracts 状态，并把 Arc UsageReceipt 合约归因到 Circle Contracts library。API key 不会进入浏览器请求或页面响应。</p>
+            </div>
+            <div id="circle-console-state" class="proof-console-status">等待读取 Circle Console 状态。</div>
+          </div>
+          <div class="proof-console-grid">
+            <div class="proof-column">
+              <section class="proof-status-list" aria-label="Circle Console 配置状态">
+                <div class="proof-status-row">
+                  <strong>Circle API Key</strong>
+                  <p>仅服务端读取，用于验证 Console 账号和 Contracts library。</p>
+                  <div id="circle-console-api-status" class="proof-status-value">待检测</div>
+                </div>
+                <div class="proof-status-row">
+                  <strong>UsageReceipt Contract</strong>
+                  <p>导入已部署在 Arc Testnet 的 UsageReceipt 合约，补充 Circle 侧归因。</p>
+                  <div id="circle-console-contract-status" class="proof-status-value">待检测</div>
+                </div>
+              </section>
+              <section class="proof-endpoint-list" aria-label="Circle Console API Paths">
+                <strong>API Paths</strong>
+                <ul>
+                  <li><code>/api/circle/console/status</code></li>
+                  <li><code>/api/circle/console/proof</code></li>
+                </ul>
+                <p>要从 UI 触发 Circle Console proof，需要在服务端显式设置 <code>CIRCLE_CONSOLE_PROOF_ENABLED=true</code>。</p>
+              </section>
+            </div>
+            <div class="proof-column">
+              <div class="proof-actions">
+                <button id="run-circle-console-proof" class="secondary" type="button" disabled>同步 Circle Console</button>
+              </div>
+              <div id="circle-console-feedback" class="mode-note">页面加载后会自动读取 status；若未启用，请设置 CIRCLE_CONSOLE_PROOF_ENABLED=true。CLI 仍可继续使用。</div>
+              <section id="circle-console-last-result" class="proof-result-panel" aria-live="polite">
+                <strong>最近结果</strong>
+                <p>尚未加载 Circle Console artifact。</p>
+              </section>
+            </div>
+          </div>
+        </section>
+
         <section class="layout">
           <article class="panel input-panel">
             <details id="source-drawer" class="source-drawer">
@@ -3102,6 +3362,28 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv, presets: LiveNewsPreset[]
         const detailPresetSource = document.getElementById('detail-preset-source');
         const detailPresetCache = document.getElementById('detail-preset-cache');
         const detailPresetSummary = document.getElementById('detail-preset-summary');
+        const arcProofConsoleState = document.getElementById('arc-proof-console-state');
+        const arcProofErc8004Status = document.getElementById('arc-proof-erc8004-status');
+        const arcProofErc8183Status = document.getElementById('arc-proof-erc8183-status');
+        const arcProofFeedback = document.getElementById('arc-proof-feedback');
+        const arcProofLastResult = document.getElementById('arc-proof-last-result');
+        const runErc8004ProofButton = document.getElementById('run-erc8004-proof');
+        const runErc8183ProofButton = document.getElementById('run-erc8183-proof');
+        const circleConsoleState = document.getElementById('circle-console-state');
+        const circleConsoleApiStatus = document.getElementById('circle-console-api-status');
+        const circleConsoleContractStatus = document.getElementById('circle-console-contract-status');
+        const circleConsoleFeedback = document.getElementById('circle-console-feedback');
+        const circleConsoleLastResult = document.getElementById('circle-console-last-result');
+        const runCircleConsoleProofButton = document.getElementById('run-circle-console-proof');
+        const arcProofEndpoints = {
+          status: '/api/arc/proofs/status',
+          erc8004: '/api/arc/proofs/erc8004',
+          erc8183: '/api/arc/proofs/erc8183'
+        };
+        const circleConsoleEndpoints = {
+          status: '/api/circle/console/status',
+          proof: '/api/circle/console/proof'
+        };
 
         const applyWorkbenchTheme = (theme) => {
           const normalizedTheme = theme === 'dark' ? 'dark' : 'light';
@@ -3130,6 +3412,7 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv, presets: LiveNewsPreset[]
           } catch {}
         };
         const detailActions = document.getElementById('detail-actions');
+        const isSafeHttpUrl = ${isSafeHttpUrl.toString()};
 
         window.addEventListener('resize', () => {
           if (state.graphChart) {
@@ -3190,6 +3473,196 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv, presets: LiveNewsPreset[]
 
         const isHexAddress = (value) => /^0x[a-fA-F0-9]{40}$/.test(String(value ?? ''));
         const isHexTransactionHash = (value) => /^0x[a-fA-F0-9]{64}$/.test(String(value ?? ''));
+        const setArcProofButtonsDisabled = (disabled) => {
+          if (runErc8004ProofButton) {
+            runErc8004ProofButton.disabled = disabled;
+          }
+
+          if (runErc8183ProofButton) {
+            runErc8183ProofButton.disabled = disabled;
+          }
+        };
+
+        const setCircleConsoleButtonDisabled = (disabled) => {
+          if (runCircleConsoleProofButton) {
+            runCircleConsoleProofButton.disabled = disabled;
+          }
+        };
+
+        const formatArcProofConfigStatus = (entry) => {
+          if (!entry) {
+            return '状态未知';
+          }
+
+          if (entry.configured) {
+            return '已配置';
+          }
+
+          if (entry.missingEnv?.length) {
+            return '缺少 ' + entry.missingEnv.join(', ');
+          }
+
+          if (entry.error) {
+            return entry.error;
+          }
+
+          return '未配置';
+        };
+
+        const buildArcProofSummaryLine = (summary) => {
+          if (!summary) {
+            return '尚无 artifact';
+          }
+
+          if (summary.kind === 'erc8004') {
+            return 'agent #' + summary.agentId + ' · tx ' + truncateMiddle(summary.primaryTxHash, 10, 8);
+          }
+
+          return 'job #' + summary.jobId + ' · ' + summary.finalStatus + ' · tx ' + truncateMiddle(summary.primaryTxHash, 10, 8);
+        };
+
+        const buildArcProofResultMarkup = (summary, artifactPath) => {
+          if (!summary) {
+            return '<strong>最近结果</strong><p>尚未加载 proof artifact。</p>';
+          }
+
+          const safeExplorerUrl = isSafeHttpUrl(summary.explorerUrl) ? summary.explorerUrl : null;
+          const explorerMarkup = safeExplorerUrl
+            ? '<div class="proof-result-line"><a href="' + escapeText(safeExplorerUrl) + '" target="_blank" rel="noreferrer">ArcScan</a></div>'
+            : '<div class="proof-result-line">ArcScan link unavailable</div>';
+
+          if (summary.kind === 'erc8004') {
+            return [
+              '<strong>最近结果</strong>',
+              '<div class="proof-result-meta">',
+              '<div class="proof-result-title">ERC-8004 Agent #' + escapeText(summary.agentId) + '</div>',
+              '<div class="proof-result-line">Owner: <code>' + escapeText(truncateMiddle(summary.owner, 10, 8)) + '</code> · Validator: <code>' + escapeText(truncateMiddle(summary.validator, 10, 8)) + '</code></div>',
+              '<div class="proof-result-line">Tx: <code>' + escapeText(summary.primaryTxHash) + '</code></div>',
+              '<div class="proof-result-line">Artifact: <code>' + escapeText(artifactPath ?? '') + '</code></div>',
+              explorerMarkup,
+              '</div>'
+            ].join('');
+          }
+
+          return [
+            '<strong>最近结果</strong>',
+            '<div class="proof-result-meta">',
+            '<div class="proof-result-title">ERC-8183 Job #' + escapeText(summary.jobId) + '</div>',
+            '<div class="proof-result-line">Client: <code>' + escapeText(truncateMiddle(summary.client, 10, 8)) + '</code> · Provider: <code>' + escapeText(truncateMiddle(summary.provider, 10, 8)) + '</code></div>',
+            '<div class="proof-result-line">Status: ' + escapeText(summary.finalStatus) + ' · Tx: <code>' + escapeText(summary.primaryTxHash) + '</code></div>',
+            '<div class="proof-result-line">Artifact: <code>' + escapeText(artifactPath ?? '') + '</code></div>',
+            explorerMarkup,
+            '</div>'
+          ].join('');
+        };
+
+        const getLatestArcProofSummary = (status) => {
+          const summaries = [status?.erc8004, status?.erc8183]
+            .filter((entry) => entry?.artifactSummary)
+            .map((entry) => ({
+              artifactPath: entry.artifactPath,
+              summary: entry.artifactSummary
+            }));
+
+          return summaries.at(-1) ?? null;
+        };
+
+        const renderArcProofStatus = (status) => {
+          const runEnabled = Boolean(status && status.runEnabled === true);
+
+          if (arcProofErc8004Status) {
+            arcProofErc8004Status.textContent = formatArcProofConfigStatus(status?.erc8004) + ' · ' + buildArcProofSummaryLine(status?.erc8004?.artifactSummary);
+          }
+
+          if (arcProofErc8183Status) {
+            arcProofErc8183Status.textContent = formatArcProofConfigStatus(status?.erc8183) + ' · ' + buildArcProofSummaryLine(status?.erc8183?.artifactSummary);
+          }
+
+          if (arcProofConsoleState) {
+            const configuredCount = [status?.erc8004?.configured, status?.erc8183?.configured].filter(Boolean).length;
+            const availableArtifactCount = [status?.erc8004?.artifactSummary, status?.erc8183?.artifactSummary].filter(Boolean).length;
+            const runStateLabel = runEnabled ? '允许执行' : '默认关闭';
+            arcProofConsoleState.textContent = runStateLabel + ' · 已检测 ' + configuredCount + '/2 项 proof 配置，最近 artifact ' + availableArtifactCount + ' 项。';
+          }
+
+          setArcProofButtonsDisabled(!runEnabled);
+
+          const latestSummary = getLatestArcProofSummary(status);
+
+          if (arcProofLastResult) {
+            arcProofLastResult.innerHTML = latestSummary
+              ? buildArcProofResultMarkup(latestSummary.summary, latestSummary.artifactPath)
+              : '<strong>最近结果</strong><p>尚未加载 proof artifact。</p>';
+          }
+
+          if (arcProofFeedback) {
+            arcProofFeedback.textContent = runEnabled
+              ? 'Status 已同步。Proof console 当前允许执行，CLI 路径仍可直接使用。'
+              : 'Proof console 当前默认关闭；如需从 UI 触发，请设置 ARC_PROOF_CONSOLE_ENABLED=true。CLI 仍可继续使用。';
+            arcProofFeedback.className = 'mode-note';
+          }
+        };
+
+        const buildCircleConsoleSummaryLine = (summary) => {
+          if (!summary) {
+            return '尚无 artifact';
+          }
+
+          return summary.usageReceiptImportStatus + ' · contracts ' + (summary.contractCount ?? 0);
+        };
+
+        const buildCircleConsoleResultMarkup = (summary, artifactPath) => {
+          if (!summary) {
+            return '<strong>最近结果</strong><p>尚未加载 Circle Console artifact。</p>';
+          }
+
+          return [
+            '<strong>最近结果</strong>',
+            '<div class="proof-result-meta">',
+            '<div class="proof-result-title">Circle Contract #' + escapeText(summary.contractId ?? 'pending') + '</div>',
+            '<div class="proof-result-line">Import: ' + escapeText(summary.usageReceiptImportStatus) + ' · Address: <code>' + escapeText(summary.contractAddress ?? 'n/a') + '</code></div>',
+            '<div class="proof-result-line">Wallets: ' + escapeText(summary.walletCount ?? 0) + ' · Contracts: ' + escapeText(summary.contractCount ?? 0) + '</div>',
+            '<div class="proof-result-line">Artifact: <code>' + escapeText(artifactPath ?? '') + '</code></div>',
+            '</div>'
+          ].join('');
+        };
+
+        const renderCircleConsoleStatus = (status) => {
+          const runEnabled = Boolean(status && status.runEnabled === true);
+
+          if (circleConsoleApiStatus) {
+            circleConsoleApiStatus.textContent = status?.apiKeyConfigured ? '已配置' : '缺少 CIRCLE_API_KEY';
+          }
+
+          if (circleConsoleContractStatus) {
+            circleConsoleContractStatus.textContent = status?.usageReceiptAddressConfigured
+              ? '已配置 · ' + buildCircleConsoleSummaryLine(status?.artifactSummary)
+              : '缺少 USAGE_RECEIPT_ADDRESS';
+          }
+
+          if (circleConsoleState) {
+            const artifactState = status?.artifactSummary ? '已有 artifact' : '尚无 artifact';
+            const runStateLabel = runEnabled ? '允许执行' : '默认关闭';
+            circleConsoleState.textContent = runStateLabel + ' · ' + artifactState + '。';
+          }
+
+          setCircleConsoleButtonDisabled(!runEnabled);
+
+          if (circleConsoleLastResult) {
+            circleConsoleLastResult.innerHTML = status?.artifactSummary
+              ? buildCircleConsoleResultMarkup(status.artifactSummary, status.artifactPath)
+              : '<strong>最近结果</strong><p>尚未加载 Circle Console artifact。</p>';
+          }
+
+          if (circleConsoleFeedback) {
+            circleConsoleFeedback.textContent = status?.error
+              ? status.error
+              : runEnabled
+                ? 'Circle Console status 已同步，可从 UI 触发 proof。'
+                : 'Circle Console proof 当前默认关闭；如需从 UI 触发，请设置 CIRCLE_CONSOLE_PROOF_ENABLED=true。CLI 仍可继续使用。';
+            circleConsoleFeedback.className = status?.error ? 'error' : 'mode-note';
+          }
+        };
         const createSnapshotMeta = (session) => {
           if (!session) {
             return null;
@@ -3275,9 +3748,12 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv, presets: LiveNewsPreset[]
           const copyButton = normalizedValue === 'n/a'
             ? ''
             : \`<button type="button" class="copy-button" data-copy-value="\${escapeText(normalizedValue)}" onclick="copyField(this)">复制</button>\`;
-          const explorerButton = options.explorerUrl
-            ? \`<a class="copy-button" href="\${escapeText(options.explorerUrl)}" target="_blank" rel="noreferrer">\${escapeText(options.explorerLabel ?? '浏览器')}</a>\`
-            : '';
+          const safeExplorerUrl = isSafeHttpUrl(options.explorerUrl) ? options.explorerUrl : null;
+          const explorerButton = safeExplorerUrl
+            ? \`<a class="copy-button" href="\${escapeText(safeExplorerUrl)}" target="_blank" rel="noreferrer">\${escapeText(options.explorerLabel ?? '浏览器')}</a>\`
+            : options.explorerUrl
+              ? '<span class="muted">链接不可用</span>'
+              : '';
 
           return \`
             <div class="evidence-field">
@@ -4289,6 +4765,201 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv, presets: LiveNewsPreset[]
           return payload;
         };
 
+        const loadArcProofStatus = async () => {
+          try {
+            const status = await fetchJson(arcProofEndpoints.status);
+
+            if (status) {
+              renderArcProofStatus(status);
+            }
+          } catch (error) {
+            if (arcProofConsoleState) {
+              arcProofConsoleState.textContent = 'Proof status 读取失败。';
+            }
+
+            if (arcProofFeedback) {
+              arcProofFeedback.textContent = error.message;
+              arcProofFeedback.className = 'error';
+            }
+          }
+        };
+
+        const loadCircleConsoleStatus = async () => {
+          try {
+            const status = await fetchJson(circleConsoleEndpoints.status);
+
+            if (status) {
+              renderCircleConsoleStatus(status);
+            }
+          } catch (error) {
+            if (circleConsoleState) {
+              circleConsoleState.textContent = 'Circle Console status 读取失败。';
+            }
+
+            if (circleConsoleFeedback) {
+              circleConsoleFeedback.textContent = error.message;
+              circleConsoleFeedback.className = 'error';
+            }
+          }
+        };
+
+        const buildArcProofRunSummary = (result) => {
+          const artifact = result?.artifact;
+
+          if (!artifact || typeof artifact !== 'object') {
+            return null;
+          }
+
+          if ('agentId' in artifact) {
+            return {
+              kind: 'erc8004',
+              agentId: artifact.agentId,
+              owner: artifact.owner,
+              validator: artifact.validator,
+              primaryTxHash: artifact.registrationTxHash,
+              explorerUrl: artifact.explorerLinks?.registrationTx ?? '',
+              artifactPath: result?.artifactPath ?? ''
+            };
+          }
+
+          if ('jobId' in artifact) {
+            return {
+              kind: 'erc8183',
+              jobId: artifact.jobId,
+              client: artifact.client,
+              provider: artifact.provider,
+              finalStatus: artifact.finalStatus,
+              primaryTxHash: artifact.completeTxHash,
+              explorerUrl: artifact.explorerLinks?.completeTx ?? '',
+              artifactPath: result?.artifactPath ?? ''
+            };
+          }
+
+          return null;
+        };
+
+        const buildCircleConsoleRunSummary = (result) => {
+          const artifact = result?.artifact;
+
+          if (!artifact || typeof artifact !== 'object') {
+            return null;
+          }
+
+          return {
+            walletCount: artifact.walletCount,
+            contractCount: artifact.contractCount,
+            usageReceiptImportStatus: artifact.usageReceiptImportStatus,
+            contractId: artifact.contractId,
+            contractAddress: artifact.contractAddress,
+            artifactPath: result?.artifactPath ?? ''
+          };
+        };
+
+        const runArcProof = async (kind) => {
+          const endpoint = kind === 'erc8004' ? arcProofEndpoints.erc8004 : arcProofEndpoints.erc8183;
+          const label = kind === 'erc8004' ? 'ERC-8004 Agent Proof' : 'ERC-8183 Job Proof';
+
+          setArcProofButtonsDisabled(true);
+
+          if (arcProofConsoleState) {
+            arcProofConsoleState.textContent = '正在创建 ' + label + '...';
+          }
+
+          if (arcProofFeedback) {
+            arcProofFeedback.textContent = '请求已发送到 ' + endpoint + '。';
+            arcProofFeedback.className = 'mode-note';
+          }
+
+          try {
+            const result = await fetchJson(endpoint, {
+              method: 'POST',
+              body: JSON.stringify({})
+            });
+            const summary = buildArcProofRunSummary(result);
+
+            if (summary && arcProofLastResult) {
+              arcProofLastResult.innerHTML = buildArcProofResultMarkup(summary, summary.artifactPath);
+            }
+
+            if (arcProofConsoleState) {
+              arcProofConsoleState.textContent = label + ' 已完成。';
+            }
+
+            if (arcProofFeedback) {
+              arcProofFeedback.textContent = 'Proof 已完成并刷新本地状态。';
+              arcProofFeedback.className = 'mode-note';
+            }
+
+            await loadArcProofStatus();
+          } catch (error) {
+            if (arcProofConsoleState) {
+              arcProofConsoleState.textContent = label + ' 失败。';
+            }
+
+            if (arcProofFeedback) {
+              arcProofFeedback.textContent = error.message;
+              arcProofFeedback.className = 'error';
+            }
+
+            if (arcProofLastResult) {
+              arcProofLastResult.innerHTML = '<strong>最近结果</strong><p class="error">' + escapeText(error.message) + '</p>';
+            }
+          } finally {
+            setArcProofButtonsDisabled(false);
+          }
+        };
+
+        const runCircleConsoleProof = async () => {
+          setCircleConsoleButtonDisabled(true);
+
+          if (circleConsoleState) {
+            circleConsoleState.textContent = '正在同步 Circle Console...';
+          }
+
+          if (circleConsoleFeedback) {
+            circleConsoleFeedback.textContent = '请求已发送到 ' + circleConsoleEndpoints.proof + '。';
+            circleConsoleFeedback.className = 'mode-note';
+          }
+
+          try {
+            const result = await fetchJson(circleConsoleEndpoints.proof, {
+              method: 'POST',
+              body: JSON.stringify({})
+            });
+            const summary = buildCircleConsoleRunSummary(result);
+
+            if (summary && circleConsoleLastResult) {
+              circleConsoleLastResult.innerHTML = buildCircleConsoleResultMarkup(summary, summary.artifactPath);
+            }
+
+            if (circleConsoleState) {
+              circleConsoleState.textContent = 'Circle Console proof 已完成。';
+            }
+
+            if (circleConsoleFeedback) {
+              circleConsoleFeedback.textContent = 'Circle Console proof 已完成并刷新状态。';
+              circleConsoleFeedback.className = 'mode-note';
+            }
+
+            await loadCircleConsoleStatus();
+          } catch (error) {
+            if (circleConsoleState) {
+              circleConsoleState.textContent = 'Circle Console proof 失败。';
+            }
+
+            if (circleConsoleFeedback) {
+              circleConsoleFeedback.textContent = error.message;
+              circleConsoleFeedback.className = 'error';
+            }
+
+            if (circleConsoleLastResult) {
+              circleConsoleLastResult.innerHTML = '<strong>最近结果</strong><p class="error">' + escapeText(error.message) + '</p>';
+            }
+          } finally {
+            setCircleConsoleButtonDisabled(false);
+          }
+        };
+
         const pollSession = async (sessionId) => {
           try {
             const session = await fetchJson('${LIVE_PRODUCT_BASE_PATH}/session/' + sessionId);
@@ -4601,10 +5272,32 @@ const renderLiveConsolePage = (runtimeEnv: RuntimeEnv, presets: LiveNewsPreset[]
           });
         }
 
+        if (runErc8004ProofButton) {
+          runErc8004ProofButton.addEventListener('click', async () => {
+            await runArcProof('erc8004');
+          });
+        }
+
+        if (runErc8183ProofButton) {
+          runErc8183ProofButton.addEventListener('click', async () => {
+            await runArcProof('erc8183');
+          });
+        }
+
+        if (runCircleConsoleProofButton) {
+          runCircleConsoleProofButton.addEventListener('click', async () => {
+            await runCircleConsoleProof();
+          });
+        }
+
         const bootstrap = async () => {
           applyWorkbenchTheme(readStoredTheme() === 'dark' ? 'dark' : 'light');
           applyInputMode(inputModeInput.value);
           updateView(null);
+          setArcProofButtonsDisabled(true);
+          setCircleConsoleButtonDisabled(true);
+          await loadArcProofStatus();
+          await loadCircleConsoleStatus();
 
           try {
             const active = await fetchJson('${LIVE_PRODUCT_BASE_PATH}/session/active');

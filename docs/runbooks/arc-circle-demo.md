@@ -201,6 +201,112 @@ http://127.0.0.1:3000/arc/sd/live
 - `artifacts/live-console/latest.json`
 - `artifacts/agent-graph/<sessionId>/session.json`
 
+## 6.8 运行 Arc standards proof runners
+
+如果你要在答辩或代码审阅里补 Arc 官方标准证据，而不是只展示 `UsageReceipt` / gateway 路径，现在有两种入口：
+
+- UI：打开 `http://127.0.0.1:3000/arc/sd/live`，在 `Arc Proof Console` 中触发 `ERC-8004 Agent Proof` 或 `ERC-8183 Job Proof`
+- CLI：单独运行 proof runners
+
+```bash
+npm run arc:erc8004
+npm run arc:erc8183
+```
+
+建议先准备：
+
+```bash
+export ARC_RPC_URL="https://your-arc-rpc.example"
+export ARC_PROOF_CONSOLE_ENABLED="true"
+export ARC_AGENT_OWNER_PRIVATE_KEY="0xyouragentownerprivatekey"
+export ARC_AGENT_VALIDATOR_PRIVATE_KEY="0xyouragentvalidatorprivatekey"
+export ARC_AGENT_METADATA_URI="ipfs://your-agent-metadata"
+export ARC_AGENT_VALIDATION_REQUEST_URI="ipfs://your-validation-request"
+export ARC_JOB_CLIENT_PRIVATE_KEY="0xyourjobclientprivatekey"
+export ARC_JOB_PROVIDER_PRIVATE_KEY="0xyourjobproviderprivatekey"
+export ARC_JOB_BUDGET_USDC="1"
+export ARC_JOB_DESCRIPTION="Arc Signal Desk proof job"
+```
+
+默认输出：
+
+- `artifacts/arc-standards/erc8004-agent.json`
+- `artifacts/arc-standards/erc8183-job.json`
+
+对应 API：
+
+- `GET /api/arc/proofs/status`
+- `POST /api/arc/proofs/erc8004`
+- `POST /api/arc/proofs/erc8183`
+
+你会在 artifact 里拿到：
+
+- ERC-8004: `agentId`、`registrationTxHash`、`reputationTxHash`、`validationRequestTxHash`、`validationResponseTxHash`
+- ERC-8183: `jobId`、`budgetAtomic`、`create/setBudget/approve/fund/submit/complete` 各阶段 tx hash、`deliverableHash`、`reasonHash`
+- 每笔交易对应的 ArcScan 链接字段
+
+注意：
+
+- proof console 默认关闭；只有显式设置 `ARC_PROOF_CONSOLE_ENABLED=true` 时，UI 按钮和 proof POST API 才允许广播
+- runner 不会打印或写入私钥
+- proof console 也不会把私钥放进浏览器请求体、HTML、JSON 响应或 status 摘要
+- `/api/arc/proofs/status` 会返回 `runEnabled`，方便在 live workbench 中展示当前是否允许执行
+- 如果缺少必要环境变量，runner 会在广播前失败
+- 测试通过依赖注入 mock `viem` client，不要求本地真实广播
+- CLI 与 UI 共用同一套服务端环境变量，现场演示建议先看 `/api/arc/proofs/status` 是否已配置完成
+
+## 6.9 运行 Circle Console proof
+
+Circle Console proof 用来把已部署的 Arc `UsageReceipt` 合约导入 Circle Contracts library，形成 Console 侧可见记录。它不需要 `CIRCLE_ENTITY_SECRET` 或 `KIT_KEY`；当前只需要 Circle API key 与合约地址。
+
+建议先准备：
+
+```bash
+export CIRCLE_API_KEY="test-api-key"
+export CIRCLE_API_BASE_URL="https://api.circle.com"
+export USAGE_RECEIPT_ADDRESS="0xYourReceiptContract"
+export CIRCLE_CONSOLE_PROOF_ARTIFACT_PATH="artifacts/circle-console/proof.json"
+export CIRCLE_CONSOLE_PROOF_ENABLED="true"
+```
+
+CLI：
+
+```bash
+npm run circle:console
+```
+
+UI：
+
+- 启动 `npm run dev`
+- 打开 `http://127.0.0.1:3000/arc/sd/live`
+- 在 `Circle Console Proof` 面板点击 `同步 Circle Console`
+
+对应 API：
+
+- `GET /api/circle/console/status`
+- `POST /api/circle/console/proof`
+
+默认输出：
+
+- `artifacts/circle-console/proof.json`
+
+你会在 artifact 里拿到：
+
+- `walletCount`
+- `contractCount`
+- `usageReceiptImportStatus`
+- Circle `contractId`
+- Arc `contractAddress`
+- Circle API `requestIds`
+
+注意：
+
+- proof API 默认关闭；只有显式设置 `CIRCLE_CONSOLE_PROOF_ENABLED=true` 时，UI 按钮和 POST API 才允许执行
+- CLI 会读取项目 `.env`，但不会打印或写入 API key
+- `CIRCLE_ENTITY_SECRET` 用于 Circle 托管钱包创建/管理，本项目当前 proof 不创建钱包，所以不使用
+- `KIT_KEY` 用于前端 App Kit，本项目当前 proof 是服务端 Console API 归因，所以不使用
+- 如果 Circle Contracts library 已经有相同 `UsageReceipt` 地址，runner 会跳过重复 import，并记录 `already_imported`
+
 ## 7. 推荐的黑客松演示顺序
 1. 先演示 `npm run demo:mock`，证明 API / 统计 / 批量调用可运行
 2. 再演示 `http://127.0.0.1:3000/arc/sd/live`，优先用 `预置卡片` 录一段逐步推进的单页 live console
@@ -210,7 +316,7 @@ http://127.0.0.1:3000/arc/sd/live
    `DEMO_ARTIFACT_DIR=artifacts/gateway-run node --import tsx scripts/gateway-buyer-runner.ts`
 6. 再跑真实 agent graph：
    `DEMO_ARTIFACT_DIR=artifacts/agent-graph node --import tsx scripts/agent-graph-runner.ts`
-7. 最后回到 `http://127.0.0.1:3000/arc/sd/live`，如网络稳定可补一段 `文章链接` 模式；随后切到 graph 页面展示来源元数据与最终证据
+7. 最后回到 `http://127.0.0.1:3000/arc/sd/live`，可先展示 `Arc Proof Console` 的 status / 按钮，再补一段 `文章链接` 模式；随后切到 graph 页面展示来源元数据与最终证据
 8. 最后切到真实 Arc receipt：
    `RECEIPT_MODE=arc DEMO_ARTIFACT_DIR=artifacts/agent-graph node --import tsx scripts/agent-graph-runner.ts`
 

@@ -5,111 +5,84 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const gatewayHarness = vi.hoisted(() => {
-  type GatewayMiddlewareConfig = {
-    sellerAddress: string;
-    networks?: string[] | string;
-    facilitatorUrl?: string;
+  type FacilitatorConfig = {
+    url?: string;
+  };
+
+  type PaymentRequirements = {
+    amount: string;
+    maxTimeoutSeconds: number;
+    network: string;
   };
 
   const state = {
-    configs: [] as GatewayMiddlewareConfig[],
-    requiredPrices: [] as string[],
-    paidRequests: [] as Array<{
-      price: string;
-      payment: {
-        verified: true;
-        payer: string;
-        amount: string;
-        network: string;
-        transaction: string;
-      };
-    }>
+    configs: [] as FacilitatorConfig[],
+    verifyRequirements: [] as PaymentRequirements[],
+    settleRequirements: [] as PaymentRequirements[]
   };
 
-  const priceToMicroUnits = (price: string): string => {
-    return String(Math.round(Number(price.replace(/[$]/g, '')) * 1_000_000));
-  };
+  class BatchFacilitatorClient {
+    constructor(config: FacilitatorConfig = {}) {
+      state.configs.push(config);
+    }
 
-  const createGatewayMiddleware = vi.fn((config: GatewayMiddlewareConfig) => {
-    state.configs.push(config);
-
-    return {
-      require: vi.fn((price: string) => {
-        state.requiredPrices.push(price);
-
-        return async (request: any, response: any, next: (error?: unknown) => void) => {
-          const network = Array.isArray(config.networks) ? config.networks[0] : config.networks ?? 'eip155:5042002';
-
-          if (!request.headers['payment-signature']) {
-            const paymentRequired = {
-              x402Version: 2,
-              resource: {
-                url: request.url ?? '/',
-                description: 'Paid resource',
-                mimeType: 'application/json'
-              },
-              accepts: [
-                {
-                  scheme: 'exact',
-                  network,
-                  amount: priceToMicroUnits(price),
-                  payTo: config.sellerAddress,
-                  maxTimeoutSeconds: 345600,
-                  extra: {
-                    name: 'GatewayWalletBatched',
-                    version: '1',
-                    verifyingContract: '0xgatewayverifier'
-                  }
-                }
-              ]
-            };
-
-            response.statusCode = 402;
-            response.setHeader('PAYMENT-REQUIRED', Buffer.from(JSON.stringify(paymentRequired)).toString('base64'));
-            response.setHeader('Content-Type', 'application/json');
-            response.end(JSON.stringify({}));
-            return;
+    async getSupported() {
+      return {
+        kinds: [
+          {
+            x402Version: 2,
+            scheme: 'exact',
+            network: 'eip155:5042002',
+            extra: {
+              verifyingContract: '0xgatewayverifier',
+              assets: [{ symbol: 'USDC', address: '0xUSDC' }]
+            }
+          },
+          {
+            x402Version: 2,
+            scheme: 'exact',
+            network: 'eip155:84532',
+            extra: {
+              verifyingContract: '0xgatewayverifier-base',
+              assets: [{ symbol: 'USDC', address: '0xBaseUSDC' }]
+            }
           }
+        ],
+        extensions: [],
+        signers: {}
+      };
+    }
 
-          const payment = {
-            verified: true as const,
-            payer: '0xbuyer',
-            amount: priceToMicroUnits(price),
-            network,
-            transaction: '0xsettlement'
-          };
+    async verify(_paymentPayload: unknown, paymentRequirements: PaymentRequirements) {
+      state.verifyRequirements.push(paymentRequirements);
 
-          request.payment = payment;
-          state.paidRequests.push({ price, payment });
+      return {
+        isValid: true,
+        payer: '0xbuyer'
+      };
+    }
 
-          response.setHeader(
-            'PAYMENT-RESPONSE',
-            Buffer.from(
-              JSON.stringify({
-                success: true,
-                transaction: payment.transaction,
-                network: payment.network,
-                payer: payment.payer
-              })
-            ).toString('base64')
-          );
+    async settle(_paymentPayload: unknown, paymentRequirements: PaymentRequirements) {
+      state.settleRequirements.push(paymentRequirements);
 
-          next();
-        };
-      }),
-      verify: vi.fn(),
-      settle: vi.fn()
-    };
-  });
+      return {
+        success: true,
+        payer: '0xbuyer',
+        amount: paymentRequirements.amount,
+        network: paymentRequirements.network,
+        transaction: '0xsettlement'
+      };
+    }
+  }
 
   return {
     state,
-    createGatewayMiddleware
+    BatchFacilitatorClient
   };
 });
 
 vi.mock('@circle-fin/x402-batching/server', () => ({
-  createGatewayMiddleware: gatewayHarness.createGatewayMiddleware
+  BatchFacilitatorClient: gatewayHarness.BatchFacilitatorClient
 }));
 
 import { createApp } from '../src/app.js';
@@ -128,8 +101,8 @@ const temporaryDirectories: string[] = [];
 
 afterEach(() => {
   gatewayHarness.state.configs.length = 0;
-  gatewayHarness.state.requiredPrices.length = 0;
-  gatewayHarness.state.paidRequests.length = 0;
+  gatewayHarness.state.verifyRequirements.length = 0;
+  gatewayHarness.state.settleRequirements.length = 0;
 
   for (const directory of temporaryDirectories.splice(0)) {
     rmSync(directory, { recursive: true, force: true });
@@ -138,8 +111,8 @@ afterEach(() => {
 
 beforeEach(() => {
   gatewayHarness.state.configs.length = 0;
-  gatewayHarness.state.requiredPrices.length = 0;
-  gatewayHarness.state.paidRequests.length = 0;
+  gatewayHarness.state.verifyRequirements.length = 0;
+  gatewayHarness.state.settleRequirements.length = 0;
 });
 
 const createTestApp = (overrides?: Partial<Record<string, string>>) => {
@@ -183,27 +156,21 @@ describe('gateway seller integration', () => {
     expect(response.statusCode).toBe(402);
     expect(response.json).toEqual({});
     expect(response.headers['payment-required']).toBeDefined();
-    expect(gatewayHarness.state.configs).toEqual([
-      {
-        sellerAddress: '0xSeller',
-        networks: ['eip155:5042002', 'eip155:84532'],
-        facilitatorUrl: 'https://gateway.example/facilitator'
-      }
-    ]);
-    expect(gatewayHarness.state.requiredPrices).toEqual(['$0.004', '$0.003', '$0.005']);
+    expect(gatewayHarness.state.configs).toEqual([{ url: 'https://gateway.example/facilitator' }]);
     expect(await callLogStore.list()).toEqual([]);
 
     const paymentRequired = JSON.parse(Buffer.from(response.headers['payment-required'], 'base64').toString('utf8'));
     expect(paymentRequired).toMatchObject({
       x402Version: 2,
-      accepts: [
-        {
+      accepts: expect.arrayContaining([
+        expect.objectContaining({
           scheme: 'exact',
           network: 'eip155:5042002',
           amount: '4000',
-          payTo: '0xSeller'
-        }
-      ]
+          payTo: '0xSeller',
+          maxTimeoutSeconds: 691200
+        })
+      ])
     });
   });
 
@@ -214,7 +181,18 @@ describe('gateway seller integration', () => {
       method: 'POST',
       path: '/api/extract/entities',
       headers: {
-        'payment-signature': 'demo-signed-payment'
+        'payment-signature': Buffer.from(
+          JSON.stringify({
+            x402Version: 2,
+            accepted: {
+              network: 'eip155:5042002'
+            },
+            payload: {
+              authorization: {},
+              signature: '0xsig'
+            }
+          })
+        ).toString('base64')
       },
       body
     });
@@ -256,17 +234,15 @@ describe('gateway seller integration', () => {
         paymentTransaction: '0xsettlement'
       })
     ]);
-    expect(gatewayHarness.state.paidRequests).toEqual([
-      {
-        price: '$0.003',
-        payment: {
-          verified: true,
-          payer: '0xbuyer',
-          amount: '3000',
-          network: 'eip155:5042002',
-          transaction: '0xsettlement'
-        }
-      }
-    ]);
+    expect(gatewayHarness.state.verifyRequirements[0]).toMatchObject({
+      amount: '3000',
+      network: 'eip155:5042002',
+      maxTimeoutSeconds: 691200
+    });
+    expect(gatewayHarness.state.settleRequirements[0]).toMatchObject({
+      amount: '3000',
+      network: 'eip155:5042002',
+      maxTimeoutSeconds: 691200
+    });
   });
 });

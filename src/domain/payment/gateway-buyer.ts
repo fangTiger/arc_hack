@@ -119,6 +119,13 @@ const isGatewayBatchingOption = (option: GatewayAcceptedOption, expectedNetwork:
 
 const formatAtomicUsdc = (value: bigint): string => formatUnits(value, 6);
 
+const GATEWAY_MIN_PAYMENT_VALIDITY_SECONDS = 60 * 60 * 24 * 8;
+
+const buildGatewaySigningRequirements = (option: GatewayAcceptedOption): GatewayAcceptedOption => ({
+  ...option,
+  maxTimeoutSeconds: Math.max(option.maxTimeoutSeconds ?? 0, GATEWAY_MIN_PAYMENT_VALIDITY_SECONDS)
+});
+
 const buildInsufficientBalanceError = (available: bigint, required: bigint): Error => {
   return new Error(
     `Gateway available balance is insufficient. Have ${formatAtomicUsdc(available)} USDC, need ${formatAtomicUsdc(required)} USDC.`
@@ -243,7 +250,7 @@ class GatewayBuyerImpl implements GatewayBuyer {
     const paymentPayload = await paymentPayloadFactory.call(
       this.client,
       probe.paymentRequired.x402Version ?? 2,
-      probe.accepted
+      buildGatewaySigningRequirements(probe.accepted)
     );
     const paymentHeader = Buffer.from(
       JSON.stringify({

@@ -359,6 +359,108 @@ describe('createGatewayBuyer', () => {
     expect(client.pay).not.toHaveBeenCalled();
   });
 
+  it('should sign gateway payments with an eight-day validity window while preserving the seller challenge', async () => {
+    const client = createMockClient();
+    let encodedPaymentHeader = '';
+    const fetchMock = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+      const headers = init?.headers as Record<string, string> | undefined;
+
+      if (!headers?.['Payment-Signature']) {
+        return new Response('{}', {
+          status: 402,
+          headers: {
+            'PAYMENT-REQUIRED': buildProbeHeader()
+          }
+        });
+      }
+
+      encodedPaymentHeader = headers['Payment-Signature'];
+
+      return new Response(
+        JSON.stringify({
+          requestId: 'buyer-001',
+          pricedOperation: {
+            operation: 'summary',
+            price: '$0.004'
+          },
+          result: {
+            kind: 'summary',
+            summary: 'Arc and Circle'
+          },
+          payment: {
+            mode: 'gateway',
+            status: 'paid',
+            payer: '0xbuyer',
+            amount: '4000',
+            network: 'eip155:5042002',
+            transaction: '0xsettlement-1'
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            'content-type': 'application/json'
+          }
+        }
+      );
+    });
+
+    client.getBalances.mockResolvedValue({
+      wallet: { balance: 20_000n, formatted: '0.020000' },
+      gateway: {
+        total: 20_000n,
+        available: 20_000n,
+        withdrawing: 0n,
+        withdrawable: 0n,
+        formattedTotal: '0.020000',
+        formattedAvailable: '0.020000',
+        formattedWithdrawing: '0.000000',
+        formattedWithdrawable: '0.000000'
+      }
+    });
+    (
+      client as unknown as GatewayBuyerClient & {
+        createPaymentPayload: ReturnType<typeof vi.fn>;
+      }
+    ).createPaymentPayload = vi.fn().mockResolvedValue({
+      x402Version: 2,
+      payload: {
+        authorization: { nonce: '0xnonce' },
+        signature: '0xsig'
+      }
+    });
+
+    const buyer = createGatewayBuyer(
+      {
+        baseUrl: 'http://127.0.0.1:3000',
+        chain: 'arcTestnet',
+        privateKey: '0x1234'
+      },
+      createDependencies(client, fetchMock)
+    );
+
+    await buyer.payBatch([createBatchRequest('buyer-001')]);
+
+    expect(
+      (
+        client as unknown as GatewayBuyerClient & {
+          createPaymentPayload: ReturnType<typeof vi.fn>;
+        }
+      ).createPaymentPayload
+    ).toHaveBeenCalledWith(
+      2,
+      expect.objectContaining({
+        maxTimeoutSeconds: 691200
+      })
+    );
+
+    const paymentHeader = JSON.parse(Buffer.from(encodedPaymentHeader, 'base64').toString('utf8')) as {
+      accepted: { maxTimeoutSeconds: number };
+    };
+
+    expect(paymentHeader.accepted.maxTimeoutSeconds).toBe(345600);
+  });
+
   it('should keep createPaymentPayload bound to the gateway client instance', async () => {
     const client = createMockClient();
     const fetchMock = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {

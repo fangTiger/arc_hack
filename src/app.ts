@@ -12,6 +12,8 @@ import { createReceiptWriterFromRuntimeEnv, type ReceiptWriter } from './domain/
 import { WhitelistNewsSourceImporter, type ImportedArticle } from './domain/news-import/index.js';
 import { createExtractRouter } from './routes/extract.js';
 import { createGraphRouter } from './routes/graph.js';
+import { createArcProofRouter, type ArcProofService } from './routes/arc-proofs.js';
+import { createCircleConsoleRouter, type CircleConsoleProofService } from './routes/circle-console.js';
 import { createLiveRouter } from './routes/live.js';
 import { createOpsRouter } from './routes/ops.js';
 import { LiveAgentSessionService } from './demo/live-session.js';
@@ -30,6 +32,10 @@ type CreateAppOptions = {
   newsImporter?: {
     import: (articleUrl: string) => Promise<ImportedArticle>;
   };
+  arcProofService?: ArcProofService;
+  arcProofEnvSource?: Record<string, string | undefined>;
+  circleConsoleService?: CircleConsoleProofService;
+  circleConsoleEnvSource?: Record<string, string | undefined>;
   receiptWriter?: ReceiptWriter;
   requestIdFactory?: () => string;
 };
@@ -106,6 +112,22 @@ export const createApp = (options: CreateAppOptions = {}) => {
       gatewayMiddleware,
       callLogStore,
       requestIdFactory: options.requestIdFactory
+    })
+  );
+  app.use(
+    '/api/arc/proofs',
+    createArcProofRouter({
+      proofService: options.arcProofService,
+      envSource: options.arcProofEnvSource ?? process.env,
+      nodeEnv: runtimeEnv.nodeEnv
+    })
+  );
+  app.use(
+    '/api/circle/console',
+    createCircleConsoleRouter({
+      proofService: options.circleConsoleService,
+      envSource: options.circleConsoleEnvSource ?? process.env,
+      nodeEnv: runtimeEnv.nodeEnv
     })
   );
   app.get(LEGACY_DEMO_BASE_PATH, (_request, response) => {

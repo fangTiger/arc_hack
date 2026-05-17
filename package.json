@@ -12,6 +12,9 @@
     "demo:agent:mock": "PAYMENT_MODE=mock DEMO_ARTIFACT_DIR=artifacts/agent-graph node --import tsx scripts/agent-graph-runner.ts",
     "demo:agent:gateway": "PAYMENT_MODE=gateway DEMO_ARTIFACT_DIR=artifacts/agent-graph node --import tsx scripts/agent-graph-runner.ts",
     "demo:gateway:buyer": "DEMO_ARTIFACT_DIR=artifacts/gateway-run node --import tsx scripts/gateway-buyer-runner.ts",
+    "arc:erc8004": "node --import tsx scripts/erc8004-agent-runner.ts",
+    "arc:erc8183": "node --import tsx scripts/erc8183-job-runner.ts",
+    "circle:console": "node --import tsx scripts/circle-console-proof-runner.ts",
     "start": "node dist/src/server.js",
     "test": "vitest",
     "test:contracts": "forge test"

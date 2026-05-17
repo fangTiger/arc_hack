@@ -12,6 +12,7 @@ import { ARC_RECOMMENDED_TRIAL_LINKS } from '../src/demo/news-presets.js';
 import type { AgentGraphRunOptions, AgentGraphRunResult } from '../src/demo/agent-session-runner.js';
 import type { ExtractionRequest } from '../src/domain/extraction/types.js';
 import type { ImportedArticle } from '../src/domain/news-import/index.js';
+import { isSafeHttpUrl } from '../src/routes/live.js';
 import { FileAgentGraphStore } from '../src/store/agent-graph-store.js';
 import { FileLiveAgentSessionStore } from '../src/store/live-session-store.js';
 import { invokeApp } from '../src/support/invoke-app.js';
@@ -157,6 +158,26 @@ const createTestHarness = (overrides: {
 };
 
 describe('createLiveRouter', () => {
+  it('should only allow http/https explorer links in the live page helpers', async () => {
+    expect(isSafeHttpUrl('https://testnet.arcscan.app/tx/0xabc')).toBe(true);
+    expect(isSafeHttpUrl('http://127.0.0.1:3000/arc/sd/live')).toBe(true);
+    expect(isSafeHttpUrl('javascript:alert(1)')).toBe(false);
+    expect(isSafeHttpUrl('data:text/html,hello')).toBe(false);
+
+    const { app } = createTestHarness();
+    const response = await invokeApp(app, {
+      method: 'GET',
+      path: '/arc/sd/live'
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.text).toContain('const isSafeHttpUrl =');
+    expect(response.text).toMatch(/protocol === ['"]http:['"] \|\| protocol === ['"]https:['"]/);
+    expect(response.text).toContain('isSafeHttpUrl(summary.explorerUrl)');
+    expect(response.text).toContain('isSafeHttpUrl(options.explorerUrl)');
+    expect(response.text).not.toContain('href="javascript:');
+  });
+
   it('should render the Arc Signal Desk shell', async () => {
     const { app } = createTestHarness();
 
@@ -245,6 +266,24 @@ describe('createLiveRouter', () => {
     expect(response.text).toContain('preset-launcher');
     expect(response.text).toContain('直接分析');
     expect(response.text).not.toContain('使用本地缓存');
+    expect(response.text).toContain('Arc Proof Console');
+    expect(response.text).toContain('id="arc-proof-console"');
+    expect(response.text).toContain('id="run-erc8004-proof"');
+    expect(response.text).toContain('id="run-erc8183-proof"');
+    expect(response.text).toContain('Circle Console Proof');
+    expect(response.text).toContain('id="run-circle-console-proof"');
+    expect(response.text).toContain('disabled>创建 Agent Proof');
+    expect(response.text).toContain('disabled>创建 Job Proof');
+    expect(response.text).toContain('disabled>同步 Circle Console');
+    expect(response.text).toContain('/api/arc/proofs/status');
+    expect(response.text).toContain('/api/arc/proofs/erc8004');
+    expect(response.text).toContain('/api/arc/proofs/erc8183');
+    expect(response.text).toContain('/api/circle/console/status');
+    expect(response.text).toContain('/api/circle/console/proof');
+    expect(response.text).toContain('私钥只保留在服务端');
+    expect(response.text).toContain('ARC_PROOF_CONSOLE_ENABLED=true');
+    expect(response.text).toContain('CIRCLE_CONSOLE_PROOF_ENABLED=true');
+    expect(response.text).toContain('status.runEnabled');
     expect(response.text).toContain('detail-drawer');
     expect(response.text).toContain('detail-panel');
     expect(response.text).toContain('graph-modal');
@@ -334,6 +373,65 @@ describe('createLiveRouter', () => {
     expect(openGraphModalMatch?.[1]).toContain("graphModal.setAttribute('aria-hidden', 'false');");
     expect(openGraphModalMatch?.[1]).toContain("graphModalFrame.setAttribute('src', toGraphEmbedUrl(session));");
     expect(openGraphModalMatch?.[1]).not.toContain('renderGraphSurface(graphModalPreview');
+  });
+
+  it('should wire the ERC-8183 proof console button to POST, render results, and refresh status in the live page script', async () => {
+    const { app } = createTestHarness();
+
+    const response = await invokeApp(app, {
+      method: 'GET',
+      path: '/arc/sd/live'
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.text).toContain("const runErc8183ProofButton = document.getElementById('run-erc8183-proof');");
+    expect(response.text).toContain("erc8183: '/api/arc/proofs/erc8183'");
+    expect(response.text).toContain("const endpoint = kind === 'erc8004' ? arcProofEndpoints.erc8004 : arcProofEndpoints.erc8183;");
+    expect(response.text).toContain("const label = kind === 'erc8004' ? 'ERC-8004 Agent Proof' : 'ERC-8183 Job Proof';");
+    expect(response.text).toContain('const result = await fetchJson(endpoint, {');
+    expect(response.text).toContain("method: 'POST'");
+    expect(response.text).toContain('body: JSON.stringify({})');
+    expect(response.text).toContain('const summary = buildArcProofRunSummary(result);');
+    expect(response.text).toContain('arcProofLastResult.innerHTML = buildArcProofResultMarkup(summary, summary.artifactPath);');
+    expect(response.text).toContain("arcProofFeedback.textContent = 'Proof 已完成并刷新本地状态。';");
+    expect(response.text).toContain('await loadArcProofStatus();');
+    expect(response.text).toContain("runErc8183ProofButton.addEventListener('click', async () => {");
+    expect(response.text).toContain("await runArcProof('erc8183');");
+    expect(response.text).toContain("'<div class=\"proof-result-title\">ERC-8183 Job #' + escapeText(summary.jobId) + '</div>'");
+    expect(response.text).toContain(
+      "'<div class=\"proof-result-line\">Status: ' + escapeText(summary.finalStatus) + ' · Tx: <code>' + escapeText(summary.primaryTxHash) + '</code></div>'"
+    );
+  });
+
+  it('should wire the Circle Console proof button to POST, render results, and refresh status in the live page script', async () => {
+    const { app } = createTestHarness();
+
+    const response = await invokeApp(app, {
+      method: 'GET',
+      path: '/arc/sd/live'
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.text).toContain("const runCircleConsoleProofButton = document.getElementById('run-circle-console-proof');");
+    expect(response.text).toContain("status: '/api/circle/console/status'");
+    expect(response.text).toContain("proof: '/api/circle/console/proof'");
+    expect(response.text).toContain('const loadCircleConsoleStatus = async () => {');
+    expect(response.text).toContain('const buildCircleConsoleRunSummary = (result) => {');
+    expect(response.text).toContain('const result = await fetchJson(circleConsoleEndpoints.proof, {');
+    expect(response.text).toContain("method: 'POST'");
+    expect(response.text).toContain('body: JSON.stringify({})');
+    expect(response.text).toContain('const summary = buildCircleConsoleRunSummary(result);');
+    expect(response.text).toContain('circleConsoleLastResult.innerHTML = buildCircleConsoleResultMarkup(summary, summary.artifactPath);');
+    expect(response.text).toContain("circleConsoleFeedback.textContent = 'Circle Console proof 已完成并刷新状态。';");
+    expect(response.text).toContain('await loadCircleConsoleStatus();');
+    expect(response.text).toContain("runCircleConsoleProofButton.addEventListener('click', async () => {");
+    expect(response.text).toContain('await runCircleConsoleProof();');
+    expect(response.text).toContain(
+      "'<div class=\"proof-result-title\">Circle Contract #' + escapeText(summary.contractId ?? 'pending') + '</div>'"
+    );
+    expect(response.text).toContain(
+      "'<div class=\"proof-result-line\">Import: ' + escapeText(summary.usageReceiptImportStatus) + ' · Address: <code>' + escapeText(summary.contractAddress ?? 'n/a') + '</code></div>'"
+    );
   });
 
   it('should redirect legacy and branded shell URLs to the live product route', async () => {
